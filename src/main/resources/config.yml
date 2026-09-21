@@ -1,0 +1,26 @@
+default-enabled: true
+
+defaults:
+  drowning: false
+  targeting: false
+  hunger: false
+  regeneration: false
+  fall: false
+  lava: false
+  fire: false
+  durability: false
+  fireworks: false
+  keep-inventory: false
+  drop-vacuum: false
+
+  vein-miner: false
+  tree-chopper: false
+
+  experience-multiplier: 1.0
+  block-break-speed: 1.0
+
+limits:
+  vein-miner: 64
+  tree-chopper: 128
+
+players: {}

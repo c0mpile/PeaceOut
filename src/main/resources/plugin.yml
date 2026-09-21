@@ -1,0 +1,23 @@
+name: PeaceOut
+version: "1.1.0"
+main: c0mpile.peaceout.PeaceOut
+api-version: "26.2"
+
+author: c0mpile
+description: Personal configurable protections and quality-of-life features.
+
+commands:
+  peaceout:
+    description: Open PeaceOut or manage personal settings.
+    usage: /peaceout [setting|admin|status]
+    aliases:
+      - po
+
+permissions:
+  peaceout.use:
+    description: Allows a player to use their own PeaceOut settings.
+    default: false
+
+  peaceout.admin:
+    description: Allows access to the PeaceOut administrator menu.
+    default: op
