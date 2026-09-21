@@ -1,8 +1,7 @@
 name: PeaceOut
-version: "1.1.0"
+version: "1.2.0"
 main: c0mpile.peaceout.PeaceOut
 api-version: "26.2"
-
 author: c0mpile
 description: Personal configurable protections and quality-of-life features.
 
@@ -13,11 +12,71 @@ commands:
     aliases:
       - po
 
+  trash:
+    description: Open a temporary trash can.
+    usage: /trash
+
+  bp:
+    description: Open a backpack or backpack selector.
+    usage: /bp [number]
+
 permissions:
   peaceout.use:
-    description: Allows a player to use their own PeaceOut settings.
+    description: Allows a player to use personal PeaceOut settings.
     default: false
 
   peaceout.admin:
     description: Allows access to the PeaceOut administrator menu.
     default: op
+
+  peaceout.trash:
+    description: Allows a player to use the trash can.
+    default: false
+
+  peaceout.backpack:
+    description: Allows a player to use backpacks.
+    default: false
+
+  peaceout.backpacks.0:
+    description: Allows zero backpacks.
+    default: false
+
+  peaceout.backpacks.1:
+    description: Allows one backpack.
+    default: false
+
+  peaceout.backpacks.2:
+    description: Allows two backpacks.
+    default: false
+
+  peaceout.backpacks.3:
+    description: Allows three backpacks.
+    default: false
+
+  peaceout.backpacks.4:
+    description: Allows four backpacks.
+    default: false
+
+  peaceout.backpacks.5:
+    description: Allows five backpacks.
+    default: false
+
+  peaceout.backpacks.6:
+    description: Allows six backpacks.
+    default: false
+
+  peaceout.backpacks.7:
+    description: Allows seven backpacks.
+    default: false
+
+  peaceout.backpacks.8:
+    description: Allows eight backpacks.
+    default: false
+
+  peaceout.backpacks.9:
+    description: Allows nine backpacks.
+    default: false
+
+  peaceout.backpacks.10:
+    description: Allows ten backpacks.
+    default: false

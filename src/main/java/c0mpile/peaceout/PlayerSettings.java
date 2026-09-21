@@ -29,10 +29,11 @@ public final class PlayerSettings {
         String base = path();
         boolean changed = false;
 
-        if (!plugin.getConfig().contains(base + ".name")) {
-            plugin.getConfig().set(base + ".name", player.getName());
-            changed = true;
-        } else {
+        if (!plugin.getConfig().contains(base + ".name")
+                || !plugin.getConfig().getString(
+                        base + ".name",
+                        ""
+                ).equals(player.getName())) {
             plugin.getConfig().set(base + ".name", player.getName());
             changed = true;
         }
@@ -40,12 +41,15 @@ public final class PlayerSettings {
         if (!plugin.getConfig().contains(base + ".enabled")) {
             plugin.getConfig().set(
                     base + ".enabled",
-                    plugin.getConfig().getBoolean("default-enabled", true)
+                    plugin.getConfig().getBoolean(
+                            "default-enabled",
+                            true
+                    )
             );
             changed = true;
         }
 
-        String[] booleans = {
+        String[] booleanSettings = {
                 "drowning",
                 "targeting",
                 "hunger",
@@ -57,21 +61,26 @@ public final class PlayerSettings {
                 "fireworks",
                 "keep-inventory",
                 "drop-vacuum",
-                "vein-miner",
-                "tree-chopper"
+                "trash",
+                "backpack"
         };
 
-        for (String key : booleans) {
+        for (String key : booleanSettings) {
             if (!plugin.getConfig().contains(base + "." + key)) {
                 plugin.getConfig().set(
                         base + "." + key,
-                        plugin.getConfig().getBoolean("defaults." + key, false)
+                        plugin.getConfig().getBoolean(
+                                "defaults." + key,
+                                false
+                        )
                 );
                 changed = true;
             }
         }
 
-        if (!plugin.getConfig().contains(base + ".experience-multiplier")) {
+        if (!plugin.getConfig().contains(
+                base + ".experience-multiplier"
+        )) {
             plugin.getConfig().set(
                     base + ".experience-multiplier",
                     plugin.getConfig().getDouble(
@@ -82,7 +91,9 @@ public final class PlayerSettings {
             changed = true;
         }
 
-        if (!plugin.getConfig().contains(base + ".block-break-speed")) {
+        if (!plugin.getConfig().contains(
+                base + ".block-break-speed"
+        )) {
             plugin.getConfig().set(
                     base + ".block-break-speed",
                     plugin.getConfig().getDouble(
@@ -106,20 +117,32 @@ public final class PlayerSettings {
     }
 
     public boolean isMasterEnabled() {
-        return plugin.getConfig().getBoolean(path() + ".enabled", true);
+        return plugin.getConfig().getBoolean(
+                path() + ".enabled",
+                true
+        );
     }
 
     public void setMasterEnabled(boolean enabled) {
-        plugin.getConfig().set(path() + ".enabled", enabled);
+        plugin.getConfig().set(
+                path() + ".enabled",
+                enabled
+        );
         plugin.saveConfig();
     }
 
     public boolean isEnabled(String key) {
-        return plugin.getConfig().getBoolean(path() + "." + key, false);
+        return plugin.getConfig().getBoolean(
+                path() + "." + key,
+                false
+        );
     }
 
     public void setEnabled(String key, boolean enabled) {
-        plugin.getConfig().set(path() + "." + key, enabled);
+        plugin.getConfig().set(
+                path() + "." + key,
+                enabled
+        );
         plugin.saveConfig();
     }
 
@@ -130,18 +153,27 @@ public final class PlayerSettings {
     }
 
     public double getMultiplier(String key) {
-        return plugin.getConfig().getDouble(path() + "." + key, 1.0);
+        return plugin.getConfig().getDouble(
+                path() + "." + key,
+                1.0
+        );
     }
 
     public void setMultiplier(String key, double value) {
-        plugin.getConfig().set(path() + "." + key, value);
+        plugin.getConfig().set(
+                path() + "." + key,
+                value
+        );
         plugin.saveConfig();
     }
 
     public Map<UUID, String> getRecordedPlayers() {
         Map<UUID, String> players = new LinkedHashMap<>();
+
         ConfigurationSection section =
-                plugin.getConfig().getConfigurationSection("players");
+                plugin.getConfig().getConfigurationSection(
+                        "players"
+                );
 
         if (section == null) {
             return players;
@@ -150,14 +182,17 @@ public final class PlayerSettings {
         for (String key : section.getKeys(false)) {
             try {
                 UUID recordedUuid = UUID.fromString(key);
+
                 String name = plugin.getConfig().getString(
                         "players." + key + ".name",
                         recordedUuid.toString()
                 );
+
                 players.put(recordedUuid, name);
-            } catch (IllegalArgumentException ignored) {
+            } catch (IllegalArgumentException exception) {
                 plugin.getLogger().warning(
-                        "Ignoring invalid UUID in config.yml: " + key
+                        "Ignoring invalid UUID in config.yml: "
+                                + key
                 );
             }
         }

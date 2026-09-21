@@ -25,9 +25,11 @@ public final class PeaceOut extends JavaPlugin {
 
         PeaceOutCommand command = new PeaceOutCommand(this);
 
-        if (getCommand("peaceout") == null) {
+        if (getCommand("peaceout") == null
+                || getCommand("trash") == null
+                || getCommand("bp") == null) {
             getLogger().severe(
-                    "The peaceout command is missing from plugin.yml."
+                    "PeaceOut commands are missing from plugin.yml."
             );
             getServer().getPluginManager().disablePlugin(this);
             return;
@@ -35,6 +37,12 @@ public final class PeaceOut extends JavaPlugin {
 
         getCommand("peaceout").setExecutor(command);
         getCommand("peaceout").setTabCompleter(command);
+
+        getCommand("trash").setExecutor(command);
+        getCommand("trash").setTabCompleter(command);
+
+        getCommand("bp").setExecutor(command);
+        getCommand("bp").setTabCompleter(command);
 
         for (Player player : getServer().getOnlinePlayers()) {
             getSettings(player);
@@ -45,8 +53,10 @@ public final class PeaceOut extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        for (Player player : getServer().getOnlinePlayers()) {
-            listener.removeBlockSpeedModifier(player);
+        if (listener != null) {
+            for (Player player : getServer().getOnlinePlayers()) {
+                listener.removeBlockSpeedModifier(player);
+            }
         }
 
         saveConfig();

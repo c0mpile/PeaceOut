@@ -16,7 +16,8 @@ public final class PeaceOutCommand
         implements CommandExecutor, TabCompleter {
 
     private static final String PREFIX =
-            ChatColor.AQUA + "[PeaceOut] " + ChatColor.RESET;
+            ChatColor.AQUA + "[PeaceOut] "
+                    + ChatColor.RESET;
 
     private static final List<String> TOGGLES = List.of(
             "drowning",
@@ -30,8 +31,8 @@ public final class PeaceOutCommand
             "fireworks",
             "keep-inventory",
             "drop-vacuum",
-            "vein-miner",
-            "tree-chopper"
+            "trash",
+            "backpack"
     );
 
     private final PeaceOut plugin;
@@ -55,8 +56,20 @@ public final class PeaceOutCommand
             return true;
         }
 
+        String commandName =
+                command.getName().toLowerCase(Locale.ROOT);
+
+        if (commandName.equals("trash")) {
+            return handleTrash(player);
+        }
+
+        if (commandName.equals("bp")) {
+            return handleBackpack(player, args);
+        }
+
         if (!player.hasPermission("peaceout.use")
-                && !(args.length > 0 && args[0].equalsIgnoreCase("admin")
+                && !(args.length > 0
+                && args[0].equalsIgnoreCase("admin")
                 && player.hasPermission("peaceout.admin"))) {
             player.sendMessage(
                     PREFIX + ChatColor.RED
@@ -107,7 +120,9 @@ public final class PeaceOutCommand
             player.sendMessage(
                     PREFIX + ChatColor.GREEN
                             + "PeaceOut master switch: "
-                            + (enabled ? "enabled." : "disabled.")
+                            + (enabled
+                            ? "enabled."
+                            : "disabled.")
             );
             return true;
         }
@@ -145,6 +160,112 @@ public final class PeaceOutCommand
         return true;
     }
 
+    private boolean handleTrash(Player player) {
+        if (!player.hasPermission("peaceout.trash")) {
+            player.sendMessage(
+                    PREFIX + ChatColor.RED
+                            + "You do not have trash permission."
+            );
+            return true;
+        }
+
+        PlayerSettings settings = plugin.getSettings(player);
+
+        if (!settings.isEnabled("trash")) {
+            player.sendMessage(
+                    PREFIX + ChatColor.RED
+                            + "Trash is disabled in your PeaceOut menu."
+            );
+            return true;
+        }
+
+        plugin.getMenu().openTrash(player);
+        return true;
+    }
+
+    private boolean handleBackpack(
+            Player player,
+            String[] args
+    ) {
+        if (!player.hasPermission("peaceout.backpack")) {
+            player.sendMessage(
+                    PREFIX + ChatColor.RED
+                            + "You do not have backpack permission."
+            );
+            return true;
+        }
+
+        PlayerSettings settings = plugin.getSettings(player);
+
+        if (!settings.isEnabled("backpack")) {
+            player.sendMessage(
+                    PREFIX + ChatColor.RED
+                            + "Backpacks are disabled in your "
+                            + "PeaceOut menu."
+            );
+            return true;
+        }
+
+        int available = getBackpackCount(player);
+
+        if (available <= 0) {
+            player.sendMessage(
+                    PREFIX + ChatColor.RED
+                            + "You do not have any backpacks available."
+            );
+            return true;
+        }
+
+        if (args.length == 0) {
+            plugin.getMenu().openBackpackSelector(player);
+            return true;
+        }
+
+        int backpackNumber;
+
+        try {
+            backpackNumber = Integer.parseInt(args[0]);
+        } catch (NumberFormatException exception) {
+            player.sendMessage(
+                    PREFIX + ChatColor.RED
+                            + "Use /bp or /bp <number>."
+            );
+            return true;
+        }
+
+        if (backpackNumber < 1
+                || backpackNumber > available
+                || backpackNumber > 10) {
+            player.sendMessage(
+                    PREFIX + ChatColor.RED
+                            + "Your available backpacks are numbered "
+                            + "from 1 to "
+                            + available
+                            + "."
+            );
+            return true;
+        }
+
+        plugin.getMenu().openBackpack(
+                player,
+                backpackNumber
+        );
+
+        return true;
+    }
+
+    public int getBackpackCount(Player player) {
+        for (int value = 10; value >= 1; value--) {
+            if (player.hasPermission(
+                    "peaceout.backpacks." + value
+            )) {
+                return value;
+            }
+        }
+
+        return 0;
+    }
+
     private void handleToggle(
             Player player,
             PlayerSettings settings,
@@ -156,7 +277,8 @@ public final class PeaceOutCommand
         if (args.length == 1) {
             value = settings.toggle(key);
         } else {
-            String argument = args[1].toLowerCase(Locale.ROOT);
+            String argument =
+                    args[1].toLowerCase(Locale.ROOT);
 
             if (argument.equals("on")
                     || argument.equals("true")
@@ -171,7 +293,8 @@ public final class PeaceOutCommand
             } else {
                 player.sendMessage(
                         PREFIX + ChatColor.RED
-                                + "Use the setting by itself, or use on/off."
+                                + "Use the setting by itself, "
+                                + "or use on/off."
                 );
                 return;
             }
@@ -201,7 +324,8 @@ public final class PeaceOutCommand
                     PREFIX + ChatColor.YELLOW
                             + displayName(key)
                             + ": "
-                            + settings.getMultiplier(key) + "x"
+                            + settings.getMultiplier(key)
+                            + "x"
             );
             return;
         }
@@ -221,7 +345,8 @@ public final class PeaceOutCommand
         if (value < 0.25 || value > 10.0) {
             player.sendMessage(
                     PREFIX + ChatColor.RED
-                            + "Multiplier must be between 0.25 and 10.0."
+                            + "Multiplier must be between "
+                            + "0.25 and 10.0."
             );
             return;
         }
@@ -246,7 +371,8 @@ public final class PeaceOutCommand
             PlayerSettings settings
     ) {
         player.sendMessage(
-                PREFIX + ChatColor.GOLD + "PeaceOut status"
+                PREFIX + ChatColor.GOLD
+                        + "PeaceOut status"
         );
 
         player.sendMessage(
@@ -258,7 +384,9 @@ public final class PeaceOutCommand
 
         for (String key : TOGGLES) {
             player.sendMessage(
-                    ChatColor.GRAY + displayName(key) + ": "
+                    ChatColor.GRAY
+                            + displayName(key)
+                            + ": "
                             + (settings.isEnabled(key)
                             ? ChatColor.GREEN + "ON"
                             : ChatColor.RED + "OFF")
@@ -266,49 +394,90 @@ public final class PeaceOutCommand
         }
 
         player.sendMessage(
-                ChatColor.GRAY + "Experience multiplier: "
-                        + settings.getMultiplier("experience-multiplier")
+                ChatColor.GRAY
+                        + "Experience multiplier: "
+                        + settings.getMultiplier(
+                        "experience-multiplier"
+                )
                         + "x"
         );
 
         player.sendMessage(
-                ChatColor.GRAY + "Block-break speed: "
-                        + settings.getMultiplier("block-break-speed")
+                ChatColor.GRAY
+                        + "Block-break speed: "
+                        + settings.getMultiplier(
+                        "block-break-speed"
+                )
                         + "x"
+        );
+
+        player.sendMessage(
+                ChatColor.GRAY
+                        + "Available backpacks: "
+                        + getBackpackCount(player)
         );
     }
 
     private void sendHelp(Player player, String label) {
         player.sendMessage(
-                PREFIX + ChatColor.GOLD + "PeaceOut commands"
+                PREFIX + ChatColor.GOLD
+                        + "PeaceOut commands"
         );
         player.sendMessage(
                 ChatColor.YELLOW + "/" + label
-                        + ChatColor.GRAY + " - Open your settings menu."
+                        + ChatColor.GRAY
+                        + " - Open your settings menu."
         );
         player.sendMessage(
-                ChatColor.YELLOW + "/" + label + " <setting>"
-                        + ChatColor.GRAY + " - Toggle a setting."
+                ChatColor.YELLOW + "/" + label
+                        + " <setting>"
+                        + ChatColor.GRAY
+                        + " - Toggle a setting."
         );
         player.sendMessage(
-                ChatColor.YELLOW + "/" + label + " <setting> on|off"
-                        + ChatColor.GRAY + " - Explicitly set it."
+                ChatColor.YELLOW + "/" + label
+                        + " <setting> on|off"
+                        + ChatColor.GRAY
+                        + " - Explicitly set it."
         );
         player.sendMessage(
-                ChatColor.YELLOW + "/" + label + " xp <value>"
-                        + ChatColor.GRAY + " - Set XP multiplier."
+                ChatColor.YELLOW + "/" + label
+                        + " xp <value>"
+                        + ChatColor.GRAY
+                        + " - Set XP multiplier."
         );
         player.sendMessage(
-                ChatColor.YELLOW + "/" + label + " block-speed <value>"
-                        + ChatColor.GRAY + " - Set mining speed."
+                ChatColor.YELLOW + "/" + label
+                        + " block-speed <value>"
+                        + ChatColor.GRAY
+                        + " - Set mining speed."
         );
         player.sendMessage(
-                ChatColor.YELLOW + "/" + label + " status"
-                        + ChatColor.GRAY + " - Show current settings."
+                ChatColor.YELLOW + "/trash"
+                        + ChatColor.GRAY
+                        + " - Open the trash can."
         );
         player.sendMessage(
-                ChatColor.YELLOW + "/" + label + " admin"
-                        + ChatColor.GRAY + " - Open admin menu."
+                ChatColor.YELLOW + "/bp"
+                        + ChatColor.GRAY
+                        + " - Choose a backpack."
+        );
+        player.sendMessage(
+                ChatColor.YELLOW + "/bp <number>"
+                        + ChatColor.GRAY
+                        + " - Open a numbered backpack."
+        );
+        player.sendMessage(
+                ChatColor.YELLOW + "/" + label
+                        + " status"
+                        + ChatColor.GRAY
+                        + " - Show current settings."
+        );
+        player.sendMessage(
+                ChatColor.YELLOW + "/" + label
+                        + " admin"
+                        + ChatColor.GRAY
+                        + " - Open admin menu."
         );
     }
 
@@ -317,7 +486,8 @@ public final class PeaceOutCommand
             case "drowning" -> "Drowning protection";
             case "targeting" -> "Mob targeting protection";
             case "hunger" -> "No food drain";
-            case "regeneration" -> "Increased regeneration";
+            case "regeneration" ->
+                    "Increased health regeneration";
             case "fall" -> "No fall damage";
             case "lava" -> "No lava damage";
             case "fire" -> "No fire damage";
@@ -325,10 +495,12 @@ public final class PeaceOutCommand
             case "fireworks" -> "Infinite fireworks";
             case "keep-inventory" -> "Keep inventory";
             case "drop-vacuum" -> "Drop vacuum";
-            case "vein-miner" -> "Instant vein miner";
-            case "tree-chopper" -> "Instant tree chopper";
-            case "experience-multiplier" -> "Experience multiplier";
-            case "block-break-speed" -> "Block-break speed";
+            case "trash" -> "Trash can";
+            case "backpack" -> "Backpacks";
+            case "experience-multiplier" ->
+                    "Experience multiplier";
+            case "block-break-speed" ->
+                    "Block-break speed";
             default -> key;
         };
     }
@@ -340,13 +512,40 @@ public final class PeaceOutCommand
             String alias,
             String[] args
     ) {
-        if (!(sender instanceof Player player)
-                || !player.hasPermission("peaceout.use")) {
+        if (!(sender instanceof Player player)) {
+            return List.of();
+        }
+
+        String commandName =
+                command.getName().toLowerCase(Locale.ROOT);
+
+        if (commandName.equals("bp")) {
+            if (!player.hasPermission("peaceout.backpack")) {
+                return List.of();
+            }
+
+            int count = getBackpackCount(player);
+            List<String> values = new ArrayList<>();
+
+            for (int number = 1; number <= count; number++) {
+                values.add(String.valueOf(number));
+            }
+
+            return values;
+        }
+
+        if (commandName.equals("trash")) {
+            return List.of();
+        }
+
+        if (!player.hasPermission("peaceout.use")) {
             return List.of();
         }
 
         if (args.length == 1) {
-            List<String> values = new ArrayList<>(TOGGLES);
+            List<String> values =
+                    new ArrayList<>(TOGGLES);
+
             values.addAll(Arrays.asList(
                     "on",
                     "off",
@@ -367,8 +566,9 @@ public final class PeaceOutCommand
         }
 
         if (args.length == 2
-                && (TOGGLES.contains(args[0])
-                || args[0].equalsIgnoreCase("all"))) {
+                && TOGGLES.contains(
+                args[0].toLowerCase(Locale.ROOT)
+        )) {
             return List.of("on", "off");
         }
 
