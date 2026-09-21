@@ -22,23 +22,19 @@ commands:
 
 permissions:
   peaceout.use:
-    description: Allows a player to use personal PeaceOut settings.
+    description: Allows personal PeaceOut settings.
     default: false
 
   peaceout.admin:
-    description: Allows access to the PeaceOut administrator menu.
+    description: Allows access to the PeaceOut admin menu.
     default: op
 
   peaceout.trash:
-    description: Allows a player to use the trash can.
+    description: Allows use of the trash can.
     default: false
 
   peaceout.backpack:
-    description: Allows a player to use backpacks.
-    default: false
-
-  peaceout.backpacks.0:
-    description: Allows zero backpacks.
+    description: Allows use of backpacks.
     default: false
 
   peaceout.backpacks.1:
@@ -79,4 +75,60 @@ permissions:
 
   peaceout.backpacks.10:
     description: Allows ten backpacks.
+    default: false
+
+  peaceout.backpacks.11:
+    description: Allows eleven backpacks.
+    default: false
+
+  peaceout.backpacks.12:
+    description: Allows twelve backpacks.
+    default: false
+
+  peaceout.backpacks.13:
+    description: Allows thirteen backpacks.
+    default: false
+
+  peaceout.backpacks.14:
+    description: Allows fourteen backpacks.
+    default: false
+
+  peaceout.backpacks.15:
+    description: Allows fifteen backpacks.
+    default: false
+
+  peaceout.backpacks.16:
+    description: Allows sixteen backpacks.
+    default: false
+
+  peaceout.backpacks.17:
+    description: Allows seventeen backpacks.
+    default: false
+
+  peaceout.backpacks.18:
+    description: Allows eighteen backpacks.
+    default: false
+
+  peaceout.backpacks.19:
+    description: Allows nineteen backpacks.
+    default: false
+
+  peaceout.backpacks.20:
+    description: Allows twenty backpacks.
+    default: false
+
+  peaceout.backpacks.21:
+    description: Allows twenty-one backpacks.
+    default: false
+
+  peaceout.backpacks.22:
+    description: Allows twenty-two backpacks.
+    default: false
+
+  peaceout.backpacks.23:
+    description: Allows twenty-three backpacks.
+    default: false
+
+  peaceout.backpacks.24:
+    description: Allows twenty-four backpacks.
     default: false

@@ -29,12 +29,16 @@ public final class PlayerSettings {
         String base = path();
         boolean changed = false;
 
-        if (!plugin.getConfig().contains(base + ".name")
-                || !plugin.getConfig().getString(
-                        base + ".name",
-                        ""
-                ).equals(player.getName())) {
-            plugin.getConfig().set(base + ".name", player.getName());
+        String currentName = plugin.getConfig().getString(
+                base + ".name",
+                ""
+        );
+
+        if (!currentName.equals(player.getName())) {
+            plugin.getConfig().set(
+                    base + ".name",
+                    player.getName()
+            );
             changed = true;
         }
 
@@ -62,7 +66,8 @@ public final class PlayerSettings {
                 "keep-inventory",
                 "drop-vacuum",
                 "trash",
-                "backpack"
+                "backpack",
+                "backpack-pickup"
         };
 
         for (String key : booleanSettings) {
@@ -147,9 +152,9 @@ public final class PlayerSettings {
     }
 
     public boolean toggle(String key) {
-        boolean value = !isEnabled(key);
-        setEnabled(key, value);
-        return value;
+        boolean enabled = !isEnabled(key);
+        setEnabled(key, enabled);
+        return enabled;
     }
 
     public double getMultiplier(String key) {
@@ -183,16 +188,16 @@ public final class PlayerSettings {
             try {
                 UUID recordedUuid = UUID.fromString(key);
 
-                String name = plugin.getConfig().getString(
-                        "players." + key + ".name",
-                        recordedUuid.toString()
+                players.put(
+                        recordedUuid,
+                        plugin.getConfig().getString(
+                                "players." + key + ".name",
+                                recordedUuid.toString()
+                        )
                 );
-
-                players.put(recordedUuid, name);
             } catch (IllegalArgumentException exception) {
                 plugin.getLogger().warning(
-                        "Ignoring invalid UUID in config.yml: "
-                                + key
+                        "Ignoring invalid UUID in config.yml: " + key
                 );
             }
         }

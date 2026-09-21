@@ -68,13 +68,13 @@ public final class PeaceOut extends JavaPlugin {
     }
 
     public PlayerSettings getSettings(UUID uuid, Player player) {
-        PlayerSettings playerSettings = settings.computeIfAbsent(
+        PlayerSettings result = settings.computeIfAbsent(
                 uuid,
                 key -> new PlayerSettings(this, key)
         );
 
-        playerSettings.initialize(player);
-        return playerSettings;
+        result.initialize(player);
+        return result;
     }
 
     public PlayerSettings getSettings(UUID uuid) {
