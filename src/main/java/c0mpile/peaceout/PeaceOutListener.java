@@ -41,424 +41,477 @@ import java.util.UUID;
 
 public final class PeaceOutListener implements Listener {
 
-    private static final NamespacedKey BLOCK_SPEED_MODIFIER_KEY =
-            new NamespacedKey("c0mpile", "peaceout-block-break-speed");
+  private static final NamespacedKey BLOCK_SPEED_MODIFIER_KEY = new NamespacedKey("c0mpile",
+      "peaceout-block-break-speed");
 
-    private final PeaceOut plugin;
-    private final Set<UUID> treeAndVeinTasks = new HashSet<>();
+  private static final int MAXIMUM_SCAN_LIMIT = 512;
 
-    public PeaceOutListener(PeaceOut plugin) {
-        this.plugin = plugin;
+  private final PeaceOut plugin;
+  private final Set<UUID> treeAndVeinTasks = new HashSet<>();
+
+  public PeaceOutListener(PeaceOut plugin) {
+    this.plugin = plugin;
+  }
+
+  @EventHandler
+  public void onPlayerJoin(PlayerJoinEvent event) {
+    Player player = event.getPlayer();
+
+    PlayerSettings settings = plugin.getSettings(player);
+    settings.initialize(player);
+
+    applyBlockSpeedModifier(player);
+  }
+
+  @EventHandler
+  public void onPlayerQuit(PlayerQuitEvent event) {
+    Player player = event.getPlayer();
+
+    removeBlockSpeedModifier(player);
+    treeAndVeinTasks.remove(player.getUniqueId());
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onEntityTarget(EntityTargetLivingEntityEvent event) {
+    if (!(event.getTarget() instanceof Player player)) {
+      return;
     }
 
-    @EventHandler
-    public void onPlayerJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-
-        PlayerSettings settings = plugin.getSettings(player);
-        settings.initialize(player);
-
-        applyBlockSpeedModifier(player);
+    if (!ordinaryFeatureEnabled(player, "targeting")) {
+      return;
     }
 
-    @EventHandler
-    public void onPlayerQuit(PlayerQuitEvent event) {
-        removeBlockSpeedModifier(event.getPlayer());
-        treeAndVeinTasks.remove(event.getPlayer().getUniqueId());
+    event.setCancelled(true);
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onEntityDamage(EntityDamageEvent event) {
+    if (!(event.getEntity() instanceof Player player)) {
+      return;
     }
 
-    @EventHandler(
-            priority = EventPriority.HIGHEST,
-            ignoreCancelled = true
-    )
-    public void onEntityTarget(EntityTargetLivingEntityEvent event) {
-        if (!(event.getTarget() instanceof Player player)) {
+    EntityDamageEvent.DamageCause cause = event.getCause();
+
+    if (cause == EntityDamageEvent.DamageCause.DROWNING
+        && ordinaryFeatureEnabled(player, "drowning")) {
+      event.setCancelled(true);
+      return;
+    }
+
+    if (cause == EntityDamageEvent.DamageCause.FALL
+        && ordinaryFeatureEnabled(player, "fall")) {
+      event.setCancelled(true);
+      return;
+    }
+
+    if (cause == EntityDamageEvent.DamageCause.LAVA
+        && ordinaryFeatureEnabled(player, "lava")) {
+      event.setCancelled(true);
+      return;
+    }
+
+    if ((cause == EntityDamageEvent.DamageCause.FIRE
+        || cause == EntityDamageEvent.DamageCause.FIRE_TICK)
+        && ordinaryFeatureEnabled(player, "fire")) {
+      event.setCancelled(true);
+    }
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onFoodLevelChange(FoodLevelChangeEvent event) {
+    if (!(event.getEntity() instanceof Player player)) {
+      return;
+    }
+
+    if (!ordinaryFeatureEnabled(player, "hunger")) {
+      return;
+    }
+
+    if (event.getFoodLevel() < player.getFoodLevel()) {
+      event.setCancelled(true);
+    }
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onPlayerItemDamage(PlayerItemDamageEvent event) {
+    Player player = event.getPlayer();
+
+    if (!ordinaryFeatureEnabled(player, "durability")) {
+      return;
+    }
+
+    event.setCancelled(true);
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onElytraBoost(PlayerElytraBoostEvent event) {
+    Player player = event.getPlayer();
+
+    if (!ordinaryFeatureEnabled(player, "fireworks")) {
+      return;
+    }
+
+    event.setShouldConsume(false);
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onPlayerExperienceChange(PlayerExpChangeEvent event) {
+    Player player = event.getPlayer();
+
+    if (!player.hasPermission("peaceout.use")) {
+      return;
+    }
+
+    PlayerSettings settings = plugin.getSettings(player);
+    double multiplier = settings.getMultiplier(
+        "experience-multiplier");
+
+    if (nearlyEqual(multiplier, 1.0)) {
+      return;
+    }
+
+    int original = event.getAmount();
+    int adjusted = (int) Math.round(original * multiplier);
+
+    event.setAmount(Math.max(0, adjusted));
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onPlayerDeath(PlayerDeathEvent event) {
+    Player player = event.getEntity();
+
+    if (!ordinaryFeatureEnabled(player, "keep-inventory")) {
+      return;
+    }
+
+    event.setKeepInventory(true);
+    event.setKeepLevel(true);
+    event.getDrops().clear();
+    event.setDroppedExp(0);
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onBlockDropItem(BlockDropItemEvent event) {
+    Player player = event.getPlayer();
+
+    if (!ordinaryFeatureEnabled(player, "drop-vacuum")) {
+      return;
+    }
+
+    PlayerInventory inventory = player.getInventory();
+
+    for (Item itemEntity : new ArrayList<>(event.getItems())) {
+      ItemStack stack = itemEntity.getItemStack().clone();
+
+      int originalAmount = stack.getAmount();
+      MapInsertResult result = addToInventory(inventory, stack);
+
+      if (result.addedAmount <= 0) {
+        continue;
+      }
+
+      if (result.addedAmount >= originalAmount) {
+        itemEntity.remove();
+        event.getItems().remove(itemEntity);
+      } else {
+        stack.setAmount(originalAmount - result.addedAmount);
+        itemEntity.setItemStack(stack);
+      }
+    }
+  }
+
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  public void onBlockBreak(BlockBreakEvent event) {
+    Player player = event.getPlayer();
+
+    if (!player.isSneaking()) {
+      return;
+    }
+
+    if (!player.hasPermission("peaceout.use")) {
+      return;
+    }
+
+    UUID uuid = player.getUniqueId();
+
+    if (treeAndVeinTasks.contains(uuid)) {
+      return;
+    }
+
+    PlayerSettings settings = plugin.getSettings(player);
+
+    boolean veinMinerEnabled = settings.isEnabled("vein-miner");
+
+    boolean treeChopperEnabled = settings.isEnabled("tree-chopper");
+
+    Block origin = event.getBlock();
+    Material material = origin.getType();
+
+    boolean veinMinerTarget = veinMinerEnabled && isOre(material);
+
+    boolean treeChopperTarget = treeChopperEnabled && isLog(material);
+
+    if (!veinMinerTarget && !treeChopperTarget) {
+      return;
+    }
+
+    int configuredLimit = veinMinerTarget
+        ? plugin.getConfig().getInt(
+            "limits.vein-miner",
+            64)
+        : plugin.getConfig().getInt(
+            "limits.tree-chopper",
+            128);
+
+    int breakLimit = Math.max(
+        1,
+        Math.min(configuredLimit, MAXIMUM_SCAN_LIMIT));
+
+    int scanLimit = Math.min(
+        MAXIMUM_SCAN_LIMIT,
+        Math.max(64, breakLimit * 4));
+
+    treeAndVeinTasks.add(uuid);
+
+    startConnectedBlockTask(
+        player,
+        origin,
+        breakLimit,
+        scanLimit);
+  }
+
+  private void startConnectedBlockTask(
+      Player player,
+      Block origin,
+      int breakLimit,
+      int scanLimit) {
+    Material targetMaterial = origin.getType();
+
+    Queue<Block> queue = new ArrayDeque<>();
+    Set<String> visited = new HashSet<>();
+
+    queue.add(origin);
+    visited.add(blockKey(origin));
+
+    UUID uuid = player.getUniqueId();
+
+    new BukkitRunnable() {
+      private int brokenBlocks = 0;
+      private int scannedBlocks = 0;
+
+      @Override
+      public void run() {
+        try {
+          if (!player.isOnline()) {
+            cancel();
             return;
-        }
+          }
 
-        if (!ordinaryFeatureEnabled(player, "targeting")) {
+          if (!player.isSneaking()) {
+            cancel();
             return;
-        }
+          }
 
-        event.setCancelled(true);
-    }
-
-    @EventHandler(
-            priority = EventPriority.HIGHEST,
-            ignoreCancelled = true
-    )
-    public void onEntityDamage(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player player)) {
+          if (brokenBlocks >= breakLimit) {
+            cancel();
             return;
-        }
+          }
 
-        EntityDamageEvent.DamageCause cause = event.getCause();
-
-        if (cause == EntityDamageEvent.DamageCause.DROWNING
-                && ordinaryFeatureEnabled(player, "drowning")) {
-            event.setCancelled(true);
+          if (scannedBlocks >= scanLimit) {
+            cancel();
             return;
-        }
+          }
 
-        if (cause == EntityDamageEvent.DamageCause.FALL
-                && ordinaryFeatureEnabled(player, "fall")) {
-            event.setCancelled(true);
+          if (queue.isEmpty()) {
+            cancel();
             return;
-        }
+          }
 
-        if (cause == EntityDamageEvent.DamageCause.LAVA
-                && ordinaryFeatureEnabled(player, "lava")) {
-            event.setCancelled(true);
+          Block current = queue.poll();
+          scannedBlocks++;
+
+          if (current.getType() != targetMaterial) {
             return;
-        }
+          }
 
-        if ((cause == EntityDamageEvent.DamageCause.FIRE
-                || cause == EntityDamageEvent.DamageCause.FIRE_TICK)
-                && ordinaryFeatureEnabled(player, "fire")) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(
-            priority = EventPriority.HIGHEST,
-            ignoreCancelled = true
-    )
-    public void onFoodLevelChange(FoodLevelChangeEvent event) {
-        if (!(event.getEntity() instanceof Player player)) {
+          if (current.equals(origin)) {
+            addMatchingNeighbors(
+                current,
+                targetMaterial,
+                queue,
+                visited,
+                scanLimit);
             return;
-        }
+          }
 
-        if (!ordinaryFeatureEnabled(player, "hunger")) {
+          boolean successfullyBroken = player.breakBlock(current);
+
+          if (!successfullyBroken) {
+            cancel();
             return;
+          }
+
+          brokenBlocks++;
+
+          addMatchingNeighbors(
+              current,
+              targetMaterial,
+              queue,
+              visited,
+              scanLimit);
+
+          if (brokenBlocks >= breakLimit
+              || scannedBlocks >= scanLimit
+              || queue.isEmpty()) {
+            cancel();
+          }
+        } finally {
+          if (isCancelled()
+              || !player.isOnline()
+              || !player.isSneaking()
+              || brokenBlocks >= breakLimit
+              || scannedBlocks >= scanLimit
+              || queue.isEmpty()) {
+            treeAndVeinTasks.remove(uuid);
+          }
         }
+      }
+    }.runTaskTimer(plugin, 1L, 1L);
+  }
 
-        if (event.getFoodLevel() < player.getFoodLevel()) {
-            event.setCancelled(true);
-        }
+  private void addMatchingNeighbors(
+      Block block,
+      Material targetMaterial,
+      Queue<Block> queue,
+      Set<String> visited,
+      int scanLimit) {
+    if (visited.size() >= scanLimit) {
+      return;
     }
 
-    @EventHandler(
-            priority = EventPriority.HIGHEST,
-            ignoreCancelled = true
-    )
-    public void onPlayerItemDamage(PlayerItemDamageEvent event) {
-        Player player = event.getPlayer();
+    for (Block nearby : adjacentBlocks(block)) {
+      if (visited.size() >= scanLimit) {
+        return;
+      }
 
-        if (!ordinaryFeatureEnabled(player, "durability")) {
-            return;
-        }
+      String key = blockKey(nearby);
 
-        event.setCancelled(true);
+      if (!visited.add(key)) {
+        continue;
+      }
+
+      if (nearby.getType() == targetMaterial) {
+        queue.add(nearby);
+      }
+    }
+  }
+
+  public void applyBlockSpeedModifier(Player player) {
+    AttributeInstance attribute = player.getAttribute(Attribute.BLOCK_BREAK_SPEED);
+
+    if (attribute == null) {
+      return;
     }
 
-    @EventHandler(
-            priority = EventPriority.HIGHEST,
-            ignoreCancelled = true
-    )
-    public void onElytraBoost(PlayerElytraBoostEvent event) {
-        Player player = event.getPlayer();
+    removeBlockSpeedModifier(player);
 
-        if (!ordinaryFeatureEnabled(player, "fireworks")) {
-            return;
-        }
+    PlayerSettings settings = plugin.getSettings(player);
+    double multiplier = settings.getMultiplier(
+        "block-break-speed");
 
-        event.setShouldConsume(false);
+    if (nearlyEqual(multiplier, 1.0)) {
+      return;
     }
 
-    @EventHandler(
-            priority = EventPriority.HIGHEST,
-            ignoreCancelled = true
-    )
-    public void onPlayerExperienceChange(PlayerExpChangeEvent event) {
-        Player player = event.getPlayer();
+    AttributeModifier modifier = new AttributeModifier(
+        BLOCK_SPEED_MODIFIER_KEY,
+        multiplier - 1.0,
+        AttributeModifier.Operation.MULTIPLY_SCALAR_1);
 
-        if (!player.hasPermission("peaceout.use")) {
-            return;
-        }
+    attribute.addModifier(modifier);
+  }
 
-        PlayerSettings settings = plugin.getSettings(player);
-        double multiplier = settings.getMultiplier(
-                "experience-multiplier"
-        );
+  public void removeBlockSpeedModifier(Player player) {
+    AttributeInstance attribute = player.getAttribute(Attribute.BLOCK_BREAK_SPEED);
 
-        if (nearlyEqual(multiplier, 1.0)) {
-            return;
-        }
-
-        int original = event.getAmount();
-        int adjusted = (int) Math.round(original * multiplier);
-
-        event.setAmount(Math.max(0, adjusted));
+    if (attribute == null) {
+      return;
     }
 
-    @EventHandler(
-            priority = EventPriority.HIGHEST,
-            ignoreCancelled = true
-    )
-    public void onPlayerDeath(PlayerDeathEvent event) {
-        Player player = event.getEntity();
+    attribute.removeModifier(BLOCK_SPEED_MODIFIER_KEY);
+  }
 
-        if (!ordinaryFeatureEnabled(player, "keep-inventory")) {
-            return;
-        }
-
-        event.setKeepInventory(true);
-        event.setKeepLevel(true);
-        event.getDrops().clear();
-        event.setDroppedExp(0);
+  private boolean ordinaryFeatureEnabled(
+      Player player,
+      String key) {
+    if (!player.hasPermission("peaceout.use")) {
+      return false;
     }
 
-    @EventHandler(
-            priority = EventPriority.HIGHEST,
-            ignoreCancelled = true
-    )
-    public void onBlockDropItem(BlockDropItemEvent event) {
-        Player player = event.getPlayer();
+    PlayerSettings settings = plugin.getSettings(player);
 
-        if (!ordinaryFeatureEnabled(player, "drop-vacuum")) {
-            return;
-        }
+    return settings.isMasterEnabled()
+        && settings.isEnabled(key);
+  }
 
-        PlayerInventory inventory = player.getInventory();
+  private boolean isOre(Material material) {
+    String name = material.name();
 
-        for (Item itemEntity : new ArrayList<>(event.getItems())) {
-            ItemStack stack = itemEntity.getItemStack().clone();
+    return name.endsWith("_ORE")
+        || name.equals("ANCIENT_DEBRIS");
+  }
 
-            int originalAmount = stack.getAmount();
-            MapInsertResult result = addToInventory(inventory, stack);
+  private boolean isLog(Material material) {
+    String name = material.name();
 
-            if (result.addedAmount <= 0) {
-                continue;
-            }
+    return name.endsWith("_LOG")
+        || name.endsWith("_WOOD")
+        || name.endsWith("_STEM")
+        || name.endsWith("_HYPHAE");
+  }
 
-            if (result.addedAmount >= originalAmount) {
-                itemEntity.remove();
-                event.getItems().remove(itemEntity);
-            } else {
-                stack.setAmount(originalAmount - result.addedAmount);
-                itemEntity.setItemStack(stack);
-            }
-        }
-    }
+  private List<Block> adjacentBlocks(Block block) {
+    List<Block> blocks = new ArrayList<>();
 
-    @EventHandler(
-            priority = EventPriority.HIGHEST,
-            ignoreCancelled = true
-    )
-    public void onBlockBreak(BlockBreakEvent event) {
-        Player player = event.getPlayer();
+    blocks.add(block.getRelative(1, 0, 0));
+    blocks.add(block.getRelative(-1, 0, 0));
+    blocks.add(block.getRelative(0, 1, 0));
+    blocks.add(block.getRelative(0, -1, 0));
+    blocks.add(block.getRelative(0, 0, 1));
+    blocks.add(block.getRelative(0, 0, -1));
 
-        if (!player.isSneaking()) {
-            return;
-        }
+    return blocks;
+  }
 
-        UUID uuid = player.getUniqueId();
+  private String blockKey(Block block) {
+    return block.getWorld().getUID()
+        + ":"
+        + block.getX()
+        + ":"
+        + block.getY()
+        + ":"
+        + block.getZ();
+  }
 
-        if (treeAndVeinTasks.contains(uuid)) {
-            return;
-        }
+  private MapInsertResult addToInventory(
+      PlayerInventory inventory,
+      ItemStack stack) {
+    int originalAmount = stack.getAmount();
 
-        PlayerSettings settings = plugin.getSettings(player);
+    java.util.HashMap<Integer, ItemStack> leftovers = inventory.addItem(stack);
 
-        boolean veinMiner = settings.isEnabled("vein-miner");
-        boolean treeChopper = settings.isEnabled("tree-chopper");
+    int leftoverAmount = leftovers.values().stream()
+        .mapToInt(ItemStack::getAmount)
+        .sum();
 
-        Block block = event.getBlock();
+    return new MapInsertResult(
+        originalAmount - leftoverAmount);
+  }
 
-        boolean isOre = isOre(block.getType());
-        boolean isLog = isLog(block.getType());
+  private boolean nearlyEqual(double first, double second) {
+    return Math.abs(first - second) < 0.001;
+  }
 
-        if ((!veinMiner || !isOre)
-                && (!treeChopper || !isLog)) {
-            return;
-        }
-
-        int limit = isOre
-                ? plugin.getConfig().getInt(
-                "limits.vein-miner",
-                64
-        )
-                : plugin.getConfig().getInt(
-                "limits.tree-chopper",
-                128
-        );
-
-        treeAndVeinTasks.add(uuid);
-
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                try {
-                    breakConnectedBlocks(
-                            player,
-                            block,
-                            limit
-                    );
-                } finally {
-                    treeAndVeinTasks.remove(uuid);
-                }
-            }
-        }.runTask(plugin);
-    }
-
-    private void breakConnectedBlocks(
-            Player player,
-            Block origin,
-            int limit
-    ) {
-        Material targetMaterial = origin.getType();
-
-        Queue<Block> queue = new ArrayDeque<>();
-        Set<String> visited = new HashSet<>();
-
-        queue.add(origin);
-        visited.add(blockKey(origin));
-
-        int broken = 0;
-
-        while (!queue.isEmpty() && broken < limit) {
-            Block current = queue.poll();
-
-            if (current.getType() != targetMaterial) {
-                continue;
-            }
-
-            if (!current.equals(origin)) {
-                current.breakNaturally(
-                        player.getInventory().getItemInMainHand()
-                );
-                broken++;
-            }
-
-            for (Block nearby : adjacentBlocks(current)) {
-                String key = blockKey(nearby);
-
-                if (!visited.add(key)) {
-                    continue;
-                }
-
-                if (nearby.getType() == targetMaterial) {
-                    queue.add(nearby);
-                }
-            }
-        }
-    }
-    
-    public void applyBlockSpeedModifier(Player player) {
-        AttributeInstance attribute =
-                player.getAttribute(Attribute.BLOCK_BREAK_SPEED);
-
-        if (attribute == null) {
-            return;
-        }
-
-        removeBlockSpeedModifier(player);
-
-        PlayerSettings settings = plugin.getSettings(player);
-        double multiplier = settings.getMultiplier(
-                "block-break-speed"
-        );
-
-        if (nearlyEqual(multiplier, 1.0)) {
-            return;
-        }
-
-        AttributeModifier modifier =
-                new AttributeModifier(
-                        BLOCK_SPEED_MODIFIER_KEY,
-                        multiplier - 1.0,
-                        AttributeModifier.Operation.MULTIPLY_SCALAR_1
-                );
-
-        attribute.addModifier(modifier);
-    }
-
-    public void removeBlockSpeedModifier(Player player) {
-        AttributeInstance attribute =
-                player.getAttribute(Attribute.BLOCK_BREAK_SPEED);
-
-        if (attribute == null) {
-            return;
-        }
-
-        attribute.removeModifier(BLOCK_SPEED_MODIFIER_KEY);
-    }
-
-    private boolean ordinaryFeatureEnabled(
-            Player player,
-            String key
-    ) {
-        if (!player.hasPermission("peaceout.use")) {
-            return false;
-        }
-
-        PlayerSettings settings = plugin.getSettings(player);
-
-        return settings.isMasterEnabled()
-                && settings.isEnabled(key);
-    }
-
-    private boolean isOre(Material material) {
-        String name = material.name();
-
-        return name.endsWith("_ORE")
-                || name.equals("ANCIENT_DEBRIS");
-    }
-
-    private boolean isLog(Material material) {
-        String name = material.name();
-
-        return name.endsWith("_LOG")
-                || name.endsWith("_WOOD")
-                || name.endsWith("_STEM")
-                || name.endsWith("_HYPHAE");
-    }
-
-    private List<Block> adjacentBlocks(Block block) {
-        List<Block> blocks = new ArrayList<>();
-
-        blocks.add(block.getRelative(1, 0, 0));
-        blocks.add(block.getRelative(-1, 0, 0));
-        blocks.add(block.getRelative(0, 1, 0));
-        blocks.add(block.getRelative(0, -1, 0));
-        blocks.add(block.getRelative(0, 0, 1));
-        blocks.add(block.getRelative(0, 0, -1));
-
-        return blocks;
-    }
-
-    private String blockKey(Block block) {
-        return block.getWorld().getUID()
-                + ":"
-                + block.getX()
-                + ":"
-                + block.getY()
-                + ":"
-                + block.getZ();
-    }
-
-    private MapInsertResult addToInventory(
-            PlayerInventory inventory,
-            ItemStack stack
-    ) {
-        int originalAmount = stack.getAmount();
-
-        java.util.HashMap<Integer, ItemStack> leftovers =
-                inventory.addItem(stack);
-
-        int leftoverAmount = leftovers.values().stream()
-                .mapToInt(ItemStack::getAmount)
-                .sum();
-
-        return new MapInsertResult(
-                originalAmount - leftoverAmount
-        );
-    }
-
-    private boolean nearlyEqual(double first, double second) {
-        return Math.abs(first - second) < 0.001;
-    }
-
-    private record MapInsertResult(int addedAmount) {
-    }
+  private record MapInsertResult(int addedAmount) {
+  }
 }

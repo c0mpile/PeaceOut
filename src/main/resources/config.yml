@@ -20,7 +20,7 @@ defaults:
   block-break-speed: 1.0
 
 limits:
-  vein-miner: 64
-  tree-chopper: 128
+  vein-miner: 32
+  tree-chopper: 64
 
 players: {}

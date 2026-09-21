@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "c0mpile"
-version = "1.0.0"
+version = "1.0.1"
 
 repositories {
     mavenCentral()
@@ -28,7 +28,6 @@ tasks {
     compileJava {
         options.encoding = "UTF-8"
         options.release.set(25)
-        options.compilerArgs.add("-Xlint:deprecation")
     }
 
     jar {
