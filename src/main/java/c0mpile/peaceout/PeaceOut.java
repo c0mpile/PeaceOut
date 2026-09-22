@@ -9,7 +9,8 @@ import java.util.UUID;
 
 public final class PeaceOut extends JavaPlugin {
 
-    private final Map<UUID, PlayerSettings> settings = new HashMap<>();
+    private final Map<UUID, PlayerSettings> settings =
+            new HashMap<>();
 
     private PeaceOutMenu menu;
     private PeaceOutListener listener;
@@ -21,9 +22,12 @@ public final class PeaceOut extends JavaPlugin {
         menu = new PeaceOutMenu(this);
         listener = new PeaceOutListener(this);
 
-        getServer().getPluginManager().registerEvents(listener, this);
+        getServer()
+                .getPluginManager()
+                .registerEvents(listener, this);
 
-        PeaceOutCommand command = new PeaceOutCommand(this);
+        PeaceOutCommand command =
+                new PeaceOutCommand(this);
 
         if (getCommand("peaceout") == null
                 || getCommand("trash") == null
@@ -31,20 +35,34 @@ public final class PeaceOut extends JavaPlugin {
             getLogger().severe(
                     "PeaceOut commands are missing from plugin.yml."
             );
-            getServer().getPluginManager().disablePlugin(this);
+
+            getServer()
+                    .getPluginManager()
+                    .disablePlugin(this);
+
             return;
         }
 
-        getCommand("peaceout").setExecutor(command);
-        getCommand("peaceout").setTabCompleter(command);
+        getCommand("peaceout")
+                .setExecutor(command);
 
-        getCommand("trash").setExecutor(command);
-        getCommand("trash").setTabCompleter(command);
+        getCommand("peaceout")
+                .setTabCompleter(command);
 
-        getCommand("bp").setExecutor(command);
-        getCommand("bp").setTabCompleter(command);
+        getCommand("trash")
+                .setExecutor(command);
 
-        for (Player player : getServer().getOnlinePlayers()) {
+        getCommand("trash")
+                .setTabCompleter(command);
+
+        getCommand("bp")
+                .setExecutor(command);
+
+        getCommand("bp")
+                .setTabCompleter(command);
+
+        for (Player player :
+                getServer().getOnlinePlayers()) {
             getSettings(player);
         }
 
@@ -54,7 +72,10 @@ public final class PeaceOut extends JavaPlugin {
     @Override
     public void onDisable() {
         if (listener != null) {
-            for (Player player : getServer().getOnlinePlayers()) {
+            listener.stop();
+
+            for (Player player :
+                    getServer().getOnlinePlayers()) {
                 listener.removeBlockSpeedModifier(player);
             }
         }
@@ -64,14 +85,21 @@ public final class PeaceOut extends JavaPlugin {
     }
 
     public PlayerSettings getSettings(Player player) {
-        return getSettings(player.getUniqueId(), player);
+        return getSettings(
+                player.getUniqueId(),
+                player
+        );
     }
 
-    public PlayerSettings getSettings(UUID uuid, Player player) {
-        PlayerSettings result = settings.computeIfAbsent(
-                uuid,
-                key -> new PlayerSettings(this, key)
-        );
+    public PlayerSettings getSettings(
+            UUID uuid,
+            Player player
+    ) {
+        PlayerSettings result =
+                settings.computeIfAbsent(
+                        uuid,
+                        key -> new PlayerSettings(this, key)
+                );
 
         result.initialize(player);
         return result;

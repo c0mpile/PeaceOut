@@ -15,14 +15,17 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public final class PeaceOutMenu implements Listener {
 
   private static final int MAX_BACKPACKS = 24;
+  private static final int BACKPACK_FOOTER_SLOT = 49;
 
   private static final String PERSONAL_TITLE = ChatColor.DARK_AQUA + "PeaceOut Settings";
 
@@ -38,7 +41,7 @@ public final class PeaceOutMenu implements Listener {
 
   private static final String BACKPACK_TITLE_PREFIX = ChatColor.DARK_GREEN + "Backpack #";
 
-  private static final List<String> PERSONAL_SETTINGS = List.of(
+  private static final List<String> SETTINGS = List.of(
       "targeting",
       "hunger",
       "regeneration",
@@ -56,7 +59,7 @@ public final class PeaceOutMenu implements Listener {
       "backpack",
       "backpack-pickup");
 
-  private static final List<Double> MULTIPLIER_VALUES = List.of(
+  private static final List<Double> MULTIPLIERS = List.of(
       0.25,
       0.50,
       0.75,
@@ -68,8 +71,8 @@ public final class PeaceOutMenu implements Listener {
       10.00);
 
   private final PeaceOut plugin;
-
   private final Map<UUID, UUID> adminTargets = new HashMap<>();
+  private final Set<UUID> changingBackpackMenus = new HashSet<>();
 
   public PeaceOutMenu(PeaceOut plugin) {
     this.plugin = plugin;
@@ -80,78 +83,66 @@ public final class PeaceOutMenu implements Listener {
   }
 
   public void openPersonalMenu(Player player) {
-    PlayerSettings settings = plugin.getSettings(player);
-
-    adminTargets.remove(player.getUniqueId());
-
     Inventory inventory = Bukkit.createInventory(
         null,
         54,
         PERSONAL_TITLE);
 
-    fillBackground(inventory);
+    PlayerSettings settings = plugin.getSettings(player);
 
-    for (int index = 0; index < PERSONAL_SETTINGS.size(); index++) {
-      String key = PERSONAL_SETTINGS.get(index);
+    for (int slot = 0; slot < SETTINGS.size(); slot++) {
+      String key = SETTINGS.get(slot);
 
-      if (isMultiplier(key)) {
-        inventory.setItem(
-            index,
-            createMultiplierItem(settings, key));
-      } else {
-        inventory.setItem(
-            index,
-            createToggleItem(
-                player,
-                settings,
-                key));
-      }
+      inventory.setItem(
+          slot,
+          isMultiplier(key)
+              ? multiplierItem(settings, key)
+              : toggleItem(player, settings, key));
     }
 
     inventory.setItem(
         45,
-        createMasterSwitchItem(settings));
+        item(
+            settings.isMasterEnabled()
+                ? Material.EMERALD
+                : Material.REDSTONE,
+            ChatColor.GOLD + "Master Switch",
+            List.of(
+                ChatColor.GRAY + "Status: "
+                    + (settings.isMasterEnabled()
+                        ? ChatColor.GREEN + "Enabled"
+                        : ChatColor.RED + "Disabled"),
+                "",
+                ChatColor.YELLOW
+                    + "Click to toggle.")));
 
     inventory.setItem(
         47,
-        createItem(
+        item(
             Material.BOOK,
             ChatColor.GOLD + "View Status",
             List.of(
-                ChatColor.GRAY
-                    + "Review your current settings.",
-                "",
                 ChatColor.YELLOW
                     + "Click to view status.")));
 
     inventory.setItem(
-        49,
-        createItem(
-            Material.NETHER_STAR,
-            ChatColor.AQUA + "PeaceOut",
-            List.of(
-                ChatColor.GRAY
-                    + "Personal quality-of-life settings.")));
-
-    inventory.setItem(
         53,
-        createItem(
+        item(
             Material.BARRIER,
             ChatColor.RED + "Close",
-            List.of(
-                ChatColor.GRAY
-                    + "Close this menu.")));
+            List.of()));
 
+    adminTargets.remove(player.getUniqueId());
     player.openInventory(inventory);
   }
 
-  public void openAdminMenu(Player admin) {
+  public void openAdminMenu(Player player) {
     Inventory inventory = Bukkit.createInventory(
         null,
         54,
         ADMIN_TITLE);
 
-    List<Map.Entry<UUID, String>> players = plugin.getSettings(admin)
+    List<Map.Entry<UUID, String>> players = plugin.getSettings(player)
         .getRecordedPlayers()
         .entrySet()
         .stream()
@@ -161,144 +152,123 @@ public final class PeaceOutMenu implements Listener {
         .toList();
 
     for (int slot = 0; slot < Math.min(players.size(), 45); slot++) {
+
       UUID uuid = players.get(slot).getKey();
-      String storedName = players.get(slot).getValue();
+      OfflinePlayer offline = Bukkit.getOfflinePlayer(uuid);
 
-      OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(uuid);
-
-      String displayName = offlinePlayer.getName() != null
-          ? offlinePlayer.getName()
-          : storedName;
+      String name = offline.getName() != null
+          ? offline.getName()
+          : players.get(slot).getValue();
 
       inventory.setItem(
           slot,
-          createItem(
+          item(
               Material.PLAYER_HEAD,
-              ChatColor.YELLOW + displayName,
+              ChatColor.YELLOW + name,
               List.of(
                   ChatColor.GRAY + "UUID:",
                   ChatColor.DARK_GRAY
                       + uuid.toString(),
                   "",
                   ChatColor.GREEN
-                      + "Click to edit settings.")));
+                      + "Click to edit.")));
     }
 
     inventory.setItem(
         49,
-        createItem(
+        item(
             Material.BARRIER,
             ChatColor.RED + "Close",
-            List.of(
-                ChatColor.GRAY
-                    + "Close this menu.")));
+            List.of()));
 
-    admin.openInventory(inventory);
+    player.openInventory(inventory);
   }
 
   private void openAdminPlayerMenu(
       Player admin,
-      UUID targetUuid) {
-    PlayerSettings settings = plugin.getSettings(targetUuid);
-
-    adminTargets.put(
-        admin.getUniqueId(),
-        targetUuid);
+      UUID target) {
+    PlayerSettings settings = plugin.getSettings(target);
 
     Inventory inventory = Bukkit.createInventory(
         null,
         54,
         ADMIN_PLAYER_PREFIX + settings.getName());
 
-    fillBackground(inventory);
+    for (int slot = 0; slot < SETTINGS.size(); slot++) {
+      String key = SETTINGS.get(slot);
 
-    for (int index = 0; index < PERSONAL_SETTINGS.size(); index++) {
-      String key = PERSONAL_SETTINGS.get(index);
-
-      if (isMultiplier(key)) {
-        inventory.setItem(
-            index,
-            createMultiplierItem(settings, key));
-      } else {
-        inventory.setItem(
-            index,
-            createToggleItem(null, settings, key));
-      }
+      inventory.setItem(
+          slot,
+          isMultiplier(key)
+              ? multiplierItem(settings, key)
+              : toggleItem(null, settings, key));
     }
 
     inventory.setItem(
         45,
-        createMasterSwitchItem(settings));
+        item(
+            settings.isMasterEnabled()
+                ? Material.EMERALD
+                : Material.REDSTONE,
+            ChatColor.GOLD + "Master Switch",
+            List.of(
+                ChatColor.GRAY + "Status: "
+                    + (settings.isMasterEnabled()
+                        ? ChatColor.GREEN + "Enabled"
+                        : ChatColor.RED + "Disabled"),
+                "",
+                ChatColor.YELLOW
+                    + "Click to toggle.")));
 
     inventory.setItem(
         48,
-        createItem(
+        item(
             Material.ARROW,
             ChatColor.YELLOW + "Back",
-            List.of(
-                ChatColor.GRAY
-                    + "Return to the player list.")));
-
-    inventory.setItem(
-        49,
-        createItem(
-            Material.NAME_TAG,
-            ChatColor.GOLD + settings.getName(),
-            List.of(
-                ChatColor.GRAY
-                    + "Editing this player's settings.")));
+            List.of()));
 
     inventory.setItem(
         53,
-        createItem(
+        item(
             Material.BARRIER,
             ChatColor.RED + "Close",
-            List.of(
-                ChatColor.GRAY
-                    + "Close this menu.")));
+            List.of()));
 
+    adminTargets.put(admin.getUniqueId(), target);
     admin.openInventory(inventory);
   }
 
   private void openMultiplierMenu(
-      Player viewer,
-      UUID targetUuid,
+      Player player,
+      UUID target,
       String key,
-      boolean adminMenu) {
-    PlayerSettings settings = plugin.getSettings(targetUuid);
-
-    if (adminMenu) {
-      adminTargets.put(
-          viewer.getUniqueId(),
-          targetUuid);
-    } else {
-      adminTargets.remove(viewer.getUniqueId());
-    }
-
-    String name = key.equals("experience-multiplier")
+      boolean admin) {
+    String displayTitle = key.equals("experience-multiplier")
         ? "Experience Multiplier"
         : "Block-Break Speed";
 
     Inventory inventory = Bukkit.createInventory(
         null,
         27,
-        MULTIPLIER_TITLE_PREFIX + name);
+        MULTIPLIER_TITLE_PREFIX + displayTitle);
 
-    fillBackground(inventory);
+    PlayerSettings settings = plugin.getSettings(target);
 
-    for (int index = 0; index < MULTIPLIER_VALUES.size(); index++) {
-      double value = MULTIPLIER_VALUES.get(index);
+    for (int index = 0; index < MULTIPLIERS.size(); index++) {
 
-      boolean selected = nearlyEqual(
-          settings.getMultiplier(key),
-          value);
+      double value = MULTIPLIERS.get(index);
+
+      boolean selected = Math.abs(
+          settings.getMultiplier(key) - value) < 0.001;
+
+      Material icon = key.equals("experience-multiplier")
+          ? Material.EXPERIENCE_BOTTLE
+          : Material.DIAMOND_PICKAXE;
 
       inventory.setItem(
           index + 9,
-          createItem(
-              selected
-                  ? Material.LIME_DYE
-                  : Material.COMPARATOR,
+          item(
+              icon,
               (selected
                   ? ChatColor.GREEN
                   : ChatColor.YELLOW)
@@ -307,20 +277,24 @@ public final class PeaceOutMenu implements Listener {
                   selected
                       ? ChatColor.GREEN
                           + "Currently selected."
-                      : ChatColor.GRAY
+                      : ChatColor.YELLOW
                           + "Click to select.")));
     }
 
     inventory.setItem(
         22,
-        createItem(
+        item(
             Material.ARROW,
             ChatColor.YELLOW + "Back",
-            List.of(
-                ChatColor.GRAY
-                    + "Return to settings.")));
+            List.of()));
 
-    viewer.openInventory(inventory);
+    if (admin) {
+      adminTargets.put(player.getUniqueId(), target);
+    } else {
+      adminTargets.remove(player.getUniqueId());
+    }
+
+    player.openInventory(inventory);
   }
 
   public void openTrash(Player player) {
@@ -329,118 +303,90 @@ public final class PeaceOutMenu implements Listener {
         54,
         TRASH_TITLE);
 
-    fillBackground(inventory);
-
-    for (int slot = 0; slot < 45; slot++) {
-      inventory.setItem(slot, null);
-    }
-
     inventory.setItem(
         49,
-        createItem(
+        item(
             Material.CAULDRON,
             ChatColor.DARK_RED + "Trash Can",
             List.of(
                 ChatColor.GRAY
-                    + "Items placed here are discarded",
-                ChatColor.GRAY
-                    + "when this menu is closed.")));
+                    + "Items are discarded when closed.")));
 
     player.openInventory(inventory);
   }
 
   public void openBackpackSelector(Player player) {
-    int count = getBackpackCount(player);
-
     Inventory inventory = Bukkit.createInventory(
         null,
         27,
         BACKPACK_SELECTOR_TITLE);
 
-    fillBackground(inventory);
+    int count = Math.min(
+        getBackpackCount(player),
+        MAX_BACKPACKS);
 
-    /*
-     * Slots 0 through 23 provide exactly 24 backpack choices.
-     * Slots 24 through 26 are reserved for the footer.
-     */
-    for (int number = 1; number <= Math.min(count, MAX_BACKPACKS); number++) {
+    for (int number = 1; number <= count; number++) {
       inventory.setItem(
           number - 1,
-          createItem(
-              Material.CHEST,
+          item(
+              Material.ENDER_CHEST,
               ChatColor.GREEN
                   + "Backpack #" + number,
               List.of(
-                  ChatColor.GRAY
-                      + "Private storage.",
-                  "",
                   ChatColor.YELLOW
                       + "Click to open.")));
     }
 
     inventory.setItem(
-        24,
-        createItem(
-            Material.BOOK,
-            ChatColor.GOLD + "Backpack Access",
-            List.of(
-                ChatColor.GRAY
-                    + "Available: "
-                    + ChatColor.WHITE
-                    + count)));
-
-    inventory.setItem(
         26,
-        createItem(
+        item(
             Material.BARRIER,
             ChatColor.RED + "Close",
-            List.of(
-                ChatColor.GRAY
-                    + "Close this menu.")));
+            List.of()));
 
     player.openInventory(inventory);
   }
 
   public void openBackpack(
       Player player,
-      int backpackNumber) {
-    if (backpackNumber < 1
-        || backpackNumber > MAX_BACKPACKS
-        || backpackNumber > getBackpackCount(player)) {
+      int number) {
+    if (number < 1
+        || number > MAX_BACKPACKS
+        || number > getBackpackCount(player)) {
       return;
     }
 
     Inventory inventory = Bukkit.createInventory(
         null,
         54,
-        BACKPACK_TITLE_PREFIX + backpackNumber);
+        BACKPACK_TITLE_PREFIX + number);
 
     List<ItemStack> contents = getBackpackContents(
         player.getUniqueId(),
-        backpackNumber);
+        number);
 
-    for (int slot = 0; slot < Math.min(
-        contents.size(),
-        inventory.getSize()); slot++) {
+    for (int slot = 0; slot < 54; slot++) {
       inventory.setItem(slot, contents.get(slot));
     }
 
     inventory.setItem(
-        49,
-        createItem(
-            Material.CHEST,
+        BACKPACK_FOOTER_SLOT,
+        item(
+            Material.ENDER_CHEST,
             ChatColor.GREEN
-                + "Backpack #" + backpackNumber,
+                + "Backpack #" + number,
             List.of(
+                ChatColor.YELLOW
+                    + "Click to choose another backpack.",
                 ChatColor.GRAY
-                    + "Contents save when closed.")));
+                    + "Contents save before switching.")));
 
     player.openInventory(inventory);
   }
 
   public List<ItemStack> getBackpackContents(
       UUID uuid,
-      int backpackNumber) {
+      int number) {
     List<ItemStack> contents = new ArrayList<>();
 
     for (int slot = 0; slot < 54; slot++) {
@@ -448,40 +394,42 @@ public final class PeaceOutMenu implements Listener {
     }
 
     List<?> stored = plugin.getConfig().getList(
-        backpackPath(uuid, backpackNumber));
+        backpackPath(uuid, number));
 
-    if (stored == null) {
-      return contents;
-    }
+    if (stored != null) {
+      for (int slot = 0; slot < Math.min(stored.size(), 54); slot++) {
 
-    for (int slot = 0; slot < Math.min(stored.size(), 54); slot++) {
-      Object value = stored.get(slot);
+        Object value = stored.get(slot);
 
-      if (value instanceof ItemStack itemStack) {
-        contents.set(slot, itemStack);
+        if (value instanceof ItemStack item) {
+          contents.set(slot, item);
+        }
       }
     }
+
+    contents.set(BACKPACK_FOOTER_SLOT, null);
 
     return contents;
   }
 
   public void saveBackpackContents(
       UUID uuid,
-      int backpackNumber,
+      int number,
       List<ItemStack> contents) {
-    List<ItemStack> safeContents = new ArrayList<>();
+    List<ItemStack> safe = new ArrayList<>();
 
     for (int slot = 0; slot < 54; slot++) {
-      if (slot < contents.size()) {
-        safeContents.add(contents.get(slot));
-      } else {
-        safeContents.add(null);
-      }
+      safe.add(
+          slot < contents.size()
+              ? contents.get(slot)
+              : null);
     }
 
+    safe.set(BACKPACK_FOOTER_SLOT, null);
+
     plugin.getConfig().set(
-        backpackPath(uuid, backpackNumber),
-        safeContents);
+        backpackPath(uuid, number),
+        safe);
 
     plugin.saveConfig();
   }
@@ -494,26 +442,30 @@ public final class PeaceOutMenu implements Listener {
 
     String title = event.getView().getTitle();
 
-    /*
-     * Trash is intentionally not cancelled. Players need to be able
-     * to place and remove items normally. Nothing is persisted.
-     */
-    if (title.equals(TRASH_TITLE)) {
+    if (title.startsWith(BACKPACK_TITLE_PREFIX)) {
+      int slot = event.getRawSlot();
+
+      if (slot == BACKPACK_FOOTER_SLOT
+          && event.getClickedInventory() == event.getView().getTopInventory()) {
+
+        event.setCancelled(true);
+
+        saveCurrentBackpack(player);
+        changingBackpackMenus.add(player.getUniqueId());
+        openBackpackSelector(player);
+      }
+
       return;
     }
 
-    /*
-     * Backpack inventories are normal storage inventories.
-     */
-    if (title.startsWith(BACKPACK_TITLE_PREFIX)) {
+    if (title.equals(TRASH_TITLE)) {
       return;
     }
 
     if (title.equals(BACKPACK_SELECTOR_TITLE)) {
       event.setCancelled(true);
 
-      if (event.getClickedInventory() == null
-          || event.getClickedInventory() != event.getView().getTopInventory()) {
+      if (event.getClickedInventory() != event.getView().getTopInventory()) {
         return;
       }
 
@@ -528,25 +480,22 @@ public final class PeaceOutMenu implements Listener {
         return;
       }
 
-      int backpackNumber = slot + 1;
-      int count = getBackpackCount(player);
+      int number = slot + 1;
 
-      if (backpackNumber > count) {
-        return;
+      if (number <= getBackpackCount(player)) {
+        openBackpack(player, number);
       }
 
-      openBackpack(player, backpackNumber);
       return;
     }
 
-    if (!isPeaceOutMenu(title)) {
+    if (!isPeaceOutTitle(title)) {
       return;
     }
 
     event.setCancelled(true);
 
-    if (event.getClickedInventory() == null
-        || event.getClickedInventory() != event.getView().getTopInventory()) {
+    if (event.getClickedInventory() != event.getView().getTopInventory()) {
       return;
     }
 
@@ -554,20 +503,11 @@ public final class PeaceOutMenu implements Listener {
 
     if (title.equals(PERSONAL_TITLE)) {
       handlePersonalClick(player, slot);
-      return;
-    }
-
-    if (title.equals(ADMIN_TITLE)) {
-      handleAdminListClick(player, slot);
-      return;
-    }
-
-    if (title.startsWith(ADMIN_PLAYER_PREFIX)) {
+    } else if (title.equals(ADMIN_TITLE)) {
+      handleAdminClick(player, slot);
+    } else if (title.startsWith(ADMIN_PLAYER_PREFIX)) {
       handleAdminPlayerClick(player, slot);
-      return;
-    }
-
-    if (title.startsWith(MULTIPLIER_TITLE_PREFIX)) {
+    } else if (title.startsWith(MULTIPLIER_TITLE_PREFIX)) {
       handleMultiplierClick(player, title, slot);
     }
   }
@@ -584,23 +524,32 @@ public final class PeaceOutMenu implements Listener {
       return;
     }
 
-    int backpackNumber;
+    if (changingBackpackMenus.remove(player.getUniqueId())) {
+      return;
+    }
+
+    saveCurrentBackpack(player);
+  }
+
+  private void saveCurrentBackpack(Player player) {
+    String title = player.getOpenInventory().getTitle();
+
+    if (!title.startsWith(BACKPACK_TITLE_PREFIX)) {
+      return;
+    }
+
+    int number;
 
     try {
-      backpackNumber = Integer.parseInt(
+      number = Integer.parseInt(
           title.substring(BACKPACK_TITLE_PREFIX.length()));
     } catch (NumberFormatException exception) {
       return;
     }
 
-    if (backpackNumber < 1
-        || backpackNumber > MAX_BACKPACKS) {
-      return;
-    }
-
     List<ItemStack> contents = new ArrayList<>();
 
-    for (ItemStack item : event.getView()
+    for (ItemStack item : player.getOpenInventory()
         .getTopInventory()
         .getContents()) {
       contents.add(item);
@@ -608,7 +557,7 @@ public final class PeaceOutMenu implements Listener {
 
     saveBackpackContents(
         player.getUniqueId(),
-        backpackNumber,
+        number,
         contents);
   }
 
@@ -621,7 +570,6 @@ public final class PeaceOutMenu implements Listener {
     }
 
     if (slot == 47) {
-      player.closeInventory();
       sendStatus(
           player,
           plugin.getSettings(player));
@@ -638,12 +586,11 @@ public final class PeaceOutMenu implements Listener {
       return;
     }
 
-    if (slot < 0
-        || slot >= PERSONAL_SETTINGS.size()) {
+    if (slot < 0 || slot >= SETTINGS.size()) {
       return;
     }
 
-    String key = PERSONAL_SETTINGS.get(slot);
+    String key = SETTINGS.get(slot);
 
     if (isMultiplier(key)) {
       openMultiplierMenu(
@@ -657,30 +604,23 @@ public final class PeaceOutMenu implements Listener {
     if (!canUseFeature(player, key)) {
       player.sendMessage(
           ChatColor.RED
-              + "You do not have permission "
-              + "to enable this feature.");
+              + "You do not have permission.");
       return;
     }
 
-    PlayerSettings settings = plugin.getSettings(player);
-
-    settings.toggle(key);
+    plugin.getSettings(player).toggle(key);
     openPersonalMenu(player);
   }
 
-  private void handleAdminListClick(
-      Player admin,
+  private void handleAdminClick(
+      Player player,
       int slot) {
     if (slot == 49) {
-      admin.closeInventory();
+      player.closeInventory();
       return;
     }
 
-    if (slot < 0 || slot >= 45) {
-      return;
-    }
-
-    List<Map.Entry<UUID, String>> players = plugin.getSettings(admin)
+    List<Map.Entry<UUID, String>> players = plugin.getSettings(player)
         .getRecordedPlayers()
         .entrySet()
         .stream()
@@ -689,21 +629,23 @@ public final class PeaceOutMenu implements Listener {
                 String.CASE_INSENSITIVE_ORDER))
         .toList();
 
-    if (slot >= players.size()) {
-      return;
-    }
+    if (slot >= 0
+        && slot < 45
+        && slot < players.size()) {
 
-    openAdminPlayerMenu(
-        admin,
-        players.get(slot).getKey());
+      openAdminPlayerMenu(
+          player,
+          players.get(slot).getKey());
+    }
   }
 
   private void handleAdminPlayerClick(
       Player admin,
       int slot) {
-    UUID targetUuid = adminTargets.get(admin.getUniqueId());
+    UUID target = adminTargets.get(
+        admin.getUniqueId());
 
-    if (targetUuid == null) {
+    if (target == null) {
       admin.closeInventory();
       return;
     }
@@ -718,49 +660,47 @@ public final class PeaceOutMenu implements Listener {
       return;
     }
 
-    PlayerSettings settings = plugin.getSettings(targetUuid);
+    PlayerSettings settings = plugin.getSettings(target);
 
     if (slot == 45) {
       settings.setMasterEnabled(
           !settings.isMasterEnabled());
 
-      openAdminPlayerMenu(admin, targetUuid);
-      applyOnlineSettings(targetUuid);
+      openAdminPlayerMenu(admin, target);
       return;
     }
 
-    if (slot < 0
-        || slot >= PERSONAL_SETTINGS.size()) {
+    if (slot < 0 || slot >= SETTINGS.size()) {
       return;
     }
 
-    String key = PERSONAL_SETTINGS.get(slot);
+    String key = SETTINGS.get(slot);
 
     if (isMultiplier(key)) {
       openMultiplierMenu(
           admin,
-          targetUuid,
+          target,
           key,
           true);
       return;
     }
 
     settings.toggle(key);
-    openAdminPlayerMenu(admin, targetUuid);
-    applyOnlineSettings(targetUuid);
+    openAdminPlayerMenu(admin, target);
   }
 
   private void handleMultiplierClick(
-      Player viewer,
+      Player player,
       String title,
       int slot) {
     if (slot == 22) {
-      UUID targetUuid = adminTargets.get(viewer.getUniqueId());
+      UUID target = adminTargets.get(
+          player.getUniqueId());
 
-      if (targetUuid == null) {
-        openPersonalMenu(viewer);
+      if (target == null) {
+        openPersonalMenu(player);
       } else {
-        openAdminPlayerMenu(viewer, targetUuid);
+        openAdminPlayerMenu(player, target);
       }
 
       return;
@@ -770,57 +710,40 @@ public final class PeaceOutMenu implements Listener {
       return;
     }
 
-    int valueIndex = slot - 9;
+    int index = slot - 9;
 
-    if (valueIndex >= MULTIPLIER_VALUES.size()) {
+    if (index >= MULTIPLIERS.size()) {
       return;
     }
 
-    UUID targetUuid = adminTargets.getOrDefault(
-        viewer.getUniqueId(),
-        viewer.getUniqueId());
+    UUID target = adminTargets.getOrDefault(
+        player.getUniqueId(),
+        player.getUniqueId());
 
     String key = title.contains("Experience")
         ? "experience-multiplier"
         : "block-break-speed";
 
-    PlayerSettings settings = plugin.getSettings(targetUuid);
+    plugin.getSettings(target).setMultiplier(
+        key,
+        MULTIPLIERS.get(index));
 
-    double value = MULTIPLIER_VALUES.get(valueIndex);
-
-    settings.setMultiplier(key, value);
-
-    Player online = Bukkit.getPlayer(targetUuid);
-
-    if (online != null
-        && online.isOnline()
-        && key.equals("block-break-speed")) {
+    if (key.equals("block-break-speed")
+        && target.equals(player.getUniqueId())) {
       plugin.getListener()
-          .applyBlockSpeedModifier(online);
+          .applyBlockSpeedModifier(player);
     }
 
-    viewer.sendMessage(
-        ChatColor.AQUA + "[PeaceOut] "
-            + ChatColor.GREEN
-            + formatSettingName(key)
-            + " set to "
-            + formatMultiplier(value)
-            + ".");
-
-    if (adminTargets.containsKey(viewer.getUniqueId())) {
-      openAdminPlayerMenu(viewer, targetUuid);
+    if (adminTargets.containsKey(player.getUniqueId())) {
+      openAdminPlayerMenu(player, target);
     } else {
-      openPersonalMenu(viewer);
+      openPersonalMenu(player);
     }
   }
 
   private boolean canUseFeature(
       Player player,
       String key) {
-    if (player == null) {
-      return true;
-    }
-
     if (key.equals("trash")) {
       return player.hasPermission("peaceout.trash");
     }
@@ -834,27 +757,132 @@ public final class PeaceOutMenu implements Listener {
     return true;
   }
 
-  private int getBackpackCount(Player player) {
-    for (int value = MAX_BACKPACKS; value >= 1; value--) {
-      if (player.hasPermission(
-          "peaceout.backpacks." + value)) {
-        return value;
-      }
+  private ItemStack toggleItem(
+      Player player,
+      PlayerSettings settings,
+      String key) {
+    boolean permitted = player == null
+        || canUseFeature(player, key);
+
+    boolean enabled = settings.isEnabled(key);
+
+    String status;
+
+    if (!permitted) {
+      status = ChatColor.RED + "Locked";
+    } else if (enabled) {
+      status = ChatColor.GREEN + "Enabled";
+    } else {
+      status = ChatColor.GRAY + "Disabled";
     }
 
-    return 0;
+    return item(
+        featureMaterial(key),
+        ChatColor.WHITE + displayName(key),
+        List.of(
+            ChatColor.GRAY + "Status: " + status,
+            "",
+            permitted
+                ? ChatColor.YELLOW
+                    + "Click to toggle."
+                : ChatColor.RED
+                    + "Permission required."));
   }
 
-  private void applyOnlineSettings(UUID uuid) {
-    Player online = Bukkit.getPlayer(uuid);
+  private ItemStack multiplierItem(
+      PlayerSettings settings,
+      String key) {
+    return item(
+        key.equals("experience-multiplier")
+            ? Material.EXPERIENCE_BOTTLE
+            : Material.DIAMOND_PICKAXE,
+        ChatColor.GOLD + displayName(key),
+        List.of(
+            ChatColor.GRAY + "Current: "
+                + ChatColor.WHITE
+                + formatMultiplier(
+                    settings.getMultiplier(key)),
+            "",
+            ChatColor.YELLOW
+                + "Click to choose."));
+  }
 
-    if (online != null && online.isOnline()) {
-      plugin.getListener()
-          .applyBlockSpeedModifier(online);
+  private Material featureMaterial(String key) {
+    return switch (key) {
+      case "targeting" -> Material.SHIELD;
+      case "hunger" -> Material.GOLDEN_APPLE;
+      case "regeneration" -> Material.POTION;
+      case "fall" -> Material.FEATHER;
+      case "drowning" -> Material.WATER_BUCKET;
+      case "fire" -> Material.FLINT_AND_STEEL;
+      case "lava" -> Material.MAGMA_CREAM;
+      case "durability" -> Material.ANVIL;
+      case "fireworks" -> Material.FIREWORK_ROCKET;
+      case "keep-inventory" -> Material.TOTEM_OF_UNDYING;
+      case "drop-vacuum" -> Material.HOPPER;
+      case "trash" -> Material.CAULDRON;
+      case "backpack" -> Material.ENDER_CHEST;
+      case "backpack-pickup" -> Material.CHEST_MINECART;
+      default -> Material.BOOK;
+    };
+  }
+
+  private String description(String key) {
+    return switch (key) {
+      case "targeting" ->
+        "Stops hostile mobs targeting you.";
+      case "hunger" ->
+        "Prevents food level loss.";
+      case "regeneration" ->
+        "Improves natural health regeneration.";
+      case "fall" ->
+        "Prevents damage from falling.";
+      case "drowning" ->
+        "Prevents damage from drowning.";
+      case "fire" ->
+        "Prevents fire damage.";
+      case "lava" ->
+        "Prevents lava damage.";
+      case "durability" ->
+        "Prevents equipped items losing durability.";
+      case "fireworks" ->
+        "Prevents fireworks being consumed.";
+      case "keep-inventory" ->
+        "Keeps items and experience after death.";
+      case "drop-vacuum" ->
+        "Pulls nearby items and experience to you.";
+      case "trash" ->
+        "Provides access to a disposable trash can.";
+      case "backpack" ->
+        "Unlocks your personal backpacks.";
+      case "backpack-pickup" ->
+        "Stores overflow items in your backpacks.";
+      case "experience-multiplier" ->
+        "Changes experience gained from orbs.";
+      case "block-break-speed" ->
+        "Changes your block-breaking speed.";
+      default ->
+        "PeaceOut setting.";
+    };
+  }
+
+  private ItemStack item(
+      Material material,
+      String name,
+      List<String> lore) {
+    ItemStack result = new ItemStack(material);
+    ItemMeta meta = result.getItemMeta();
+
+    if (meta != null) {
+      meta.setDisplayName(name);
+      meta.setLore(lore);
+      result.setItemMeta(meta);
     }
+
+    return result;
   }
 
-  private boolean isPeaceOutMenu(String title) {
+  private boolean isPeaceOutTitle(String title) {
     return title.equals(PERSONAL_TITLE)
         || title.equals(ADMIN_TITLE)
         || title.startsWith(ADMIN_PLAYER_PREFIX)
@@ -866,6 +894,18 @@ public final class PeaceOutMenu implements Listener {
         || key.equals("block-break-speed");
   }
 
+  private int getBackpackCount(Player player) {
+    for (int number = MAX_BACKPACKS; number >= 1; number--) {
+
+      if (player.hasPermission(
+          "peaceout.backpacks." + number)) {
+        return number;
+      }
+    }
+
+    return 0;
+  }
+
   private String backpackPath(
       UUID uuid,
       int number) {
@@ -875,199 +915,7 @@ public final class PeaceOutMenu implements Listener {
         + number;
   }
 
-  private ItemStack createToggleItem(
-      Player player,
-      PlayerSettings settings,
-      String key) {
-    boolean permitted = player == null
-        || canUseFeature(player, key);
-
-    boolean enabled = settings.isEnabled(key);
-
-    Material icon = featureIcon(key);
-
-    if (!permitted) {
-      icon = Material.BARRIER;
-    }
-
-    ChatColor stateColor = enabled && permitted
-        ? ChatColor.GREEN
-        : ChatColor.RED;
-
-    String state = !permitted
-        ? ChatColor.RED + "Permission required"
-        : enabled
-            ? ChatColor.GREEN + "Enabled"
-            : ChatColor.GRAY + "Disabled";
-
-    List<String> lore = new ArrayList<>();
-
-    lore.add(
-        ChatColor.GRAY + "Status: " + state);
-
-    lore.add("");
-
-    if (permitted) {
-      lore.add(
-          ChatColor.YELLOW + "Click to toggle.");
-    } else {
-      lore.add(
-          ChatColor.DARK_RED
-              + "You cannot use this feature.");
-    }
-
-    if (key.equals("backpack-pickup")) {
-      lore.add("");
-      lore.add(
-          ChatColor.DARK_GRAY
-              + "Sends overflow pickups to backpacks.");
-    }
-
-    return createItem(
-        icon,
-        stateColor + formatSettingName(key),
-        lore);
-  }
-
-  private Material featureIcon(String key) {
-    return switch (key) {
-      case "targeting" -> Material.SHIELD;
-      case "hunger" -> Material.GOLDEN_APPLE;
-      case "regeneration" -> Material.POTION;
-      case "fall" -> Material.FEATHER;
-      case "durability" -> Material.ANVIL;
-      case "fireworks" -> Material.FIREWORK_ROCKET;
-      case "keep-inventory" -> Material.ENDER_CHEST;
-      case "drop-vacuum" -> Material.HOPPER;
-      case "drowning" -> Material.WATER_BUCKET;
-      case "lava" -> Material.LAVA_BUCKET;
-      case "fire" -> Material.FIRE_CHARGE;
-      case "trash" -> Material.CAULDRON;
-      case "backpack" -> Material.CHEST;
-      case "backpack-pickup" -> Material.BUNDLE;
-      default -> Material.PAPER;
-    };
-  }
-
-  private ItemStack createMultiplierItem(
-      PlayerSettings settings,
-      String key) {
-    Material material = key.equals(
-        "experience-multiplier")
-            ? Material.EXPERIENCE_BOTTLE
-            : Material.DIAMOND_PICKAXE;
-
-    return createItem(
-        material,
-        ChatColor.GOLD + formatSettingName(key),
-        List.of(
-            ChatColor.GRAY + "Current: "
-                + ChatColor.WHITE
-                + formatMultiplier(
-                    settings.getMultiplier(key)),
-            "",
-            ChatColor.YELLOW
-                + "Click to choose a value."));
-  }
-
-  private ItemStack createMasterSwitchItem(
-      PlayerSettings settings) {
-    boolean enabled = settings.isMasterEnabled();
-
-    return createItem(
-        enabled
-            ? Material.EMERALD
-            : Material.REDSTONE,
-        ChatColor.GOLD + "Master Switch",
-        List.of(
-            ChatColor.GRAY + "Status: "
-                + (enabled
-                    ? ChatColor.GREEN + "Enabled"
-                    : ChatColor.RED + "Disabled"),
-            "",
-            ChatColor.YELLOW
-                + "Click to toggle.",
-            ChatColor.DARK_GRAY
-                + "Controls ordinary protections.",
-            ChatColor.DARK_GRAY
-                + "XP and block speed are independent."));
-  }
-
-  private ItemStack createItem(
-      Material material,
-      String name,
-      List<String> lore) {
-    ItemStack item = new ItemStack(material);
-    ItemMeta meta = item.getItemMeta();
-
-    if (meta != null) {
-      meta.setDisplayName(name);
-      meta.setLore(lore);
-      item.setItemMeta(meta);
-    }
-
-    return item;
-  }
-
-  private void fillBackground(Inventory inventory) {
-    ItemStack filler = createItem(
-        Material.GRAY_STAINED_GLASS_PANE,
-        " ",
-        List.of());
-
-    for (int slot = 0; slot < inventory.getSize(); slot++) {
-      inventory.setItem(slot, filler);
-    }
-  }
-
-  private void sendStatus(
-      Player player,
-      PlayerSettings settings) {
-    player.sendMessage(
-        ChatColor.AQUA
-            + "[PeaceOut] "
-            + ChatColor.GOLD
-            + "Current Settings");
-
-    player.sendMessage(
-        ChatColor.GRAY + "Master switch: "
-            + status(
-                settings.isMasterEnabled()));
-
-    for (String key : PERSONAL_SETTINGS) {
-      if (isMultiplier(key)) {
-        player.sendMessage(
-            ChatColor.GRAY
-                + formatSettingName(key)
-                + ": "
-                + ChatColor.WHITE
-                + formatMultiplier(
-                    settings.getMultiplier(key)));
-      } else {
-        player.sendMessage(
-            ChatColor.GRAY
-                + formatSettingName(key)
-                + ": "
-                + status(
-                    settings.isEnabled(key)));
-      }
-    }
-  }
-
-  private String status(boolean enabled) {
-    return enabled
-        ? ChatColor.GREEN + "ON"
-        : ChatColor.RED + "OFF";
-  }
-
-  private String formatMultiplier(double value) {
-    return String.format(
-        Locale.US,
-        "%.2fx",
-        value);
-  }
-
-  private String formatSettingName(String key) {
+  private String displayName(String key) {
     return switch (key) {
       case "targeting" ->
         "Mob Targeting Protection";
@@ -1101,13 +949,49 @@ public final class PeaceOutMenu implements Listener {
         "Backpacks";
       case "backpack-pickup" ->
         "Automatic Backpack Pickup";
-      default -> key;
+      default ->
+        key;
     };
   }
 
-  private boolean nearlyEqual(
-      double first,
-      double second) {
-    return Math.abs(first - second) < 0.001;
+  private String formatMultiplier(double value) {
+    return String.format(
+        Locale.US,
+        "%.2fx",
+        value);
+  }
+
+  private void sendStatus(
+      Player player,
+      PlayerSettings settings) {
+    player.sendMessage(
+        ChatColor.AQUA + "[PeaceOut] "
+            + ChatColor.GOLD + "Status");
+
+    player.sendMessage(
+        ChatColor.GRAY + "Master: "
+            + (settings.isMasterEnabled()
+                ? ChatColor.GREEN + "ON"
+                : ChatColor.RED + "OFF"));
+
+    for (String key : SETTINGS) {
+      String value;
+
+      if (isMultiplier(key)) {
+        value = ChatColor.WHITE
+            + formatMultiplier(
+                settings.getMultiplier(key));
+      } else {
+        value = settings.isEnabled(key)
+            ? ChatColor.GREEN + "ON"
+            : ChatColor.RED + "OFF";
+      }
+
+      player.sendMessage(
+          ChatColor.GRAY
+              + displayName(key)
+              + ": "
+              + value);
+    }
   }
 }
