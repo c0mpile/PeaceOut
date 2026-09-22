@@ -6,7 +6,7 @@ Players can enable or disable available features through an in-game menu or comm
 
 ## Requirements
 
-- Paper 1.21.x or the server version supported by Paper API `26.2`
+- Paper version `26.2`
 - Java 25 or newer
 - A permissions plugin such as LuckPerms
 
