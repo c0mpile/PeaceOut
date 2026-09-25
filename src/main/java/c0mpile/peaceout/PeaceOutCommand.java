@@ -32,7 +32,8 @@ public final class PeaceOutCommand
             "drop-vacuum",
             "trash",
             "backpack",
-            "backpack-pickup"
+            "backpack-pickup",
+            "backpack-sticky"
     );
 
     private final PeaceOut plugin;
@@ -430,6 +431,8 @@ public final class PeaceOutCommand
             case "backpack" -> "Backpacks";
             case "backpack-pickup" ->
                     "Automatic backpack pickup";
+            case "backpack-sticky" ->
+                    "Smart Backpack Sorting";
             case "experience-multiplier" ->
                     "Experience multiplier";
             case "block-break-speed" ->

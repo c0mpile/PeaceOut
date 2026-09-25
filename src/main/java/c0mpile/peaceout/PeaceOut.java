@@ -1,6 +1,8 @@
 package c0mpile.peaceout;
 
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.HashMap;
@@ -8,6 +10,26 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class PeaceOut extends JavaPlugin {
+
+    public static final int MAX_STACK_SIZE = 99;
+
+    public static void applyMaxStackSize(ItemStack stack) {
+        if (stack == null
+                || stack.getType().isAir()
+                || stack.getType().getMaxStackSize() <= 1) {
+            return;
+        }
+
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) {
+            return;
+        }
+
+        if (!meta.hasMaxStackSize() || meta.getMaxStackSize() != MAX_STACK_SIZE) {
+            meta.setMaxStackSize(MAX_STACK_SIZE);
+            stack.setItemMeta(meta);
+        }
+    }
 
     private final Map<UUID, PlayerSettings> settings =
             new HashMap<>();

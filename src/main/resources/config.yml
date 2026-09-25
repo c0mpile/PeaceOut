@@ -15,6 +15,7 @@ defaults:
   trash: false
   backpack: false
   backpack-pickup: false
+  backpack-sticky: false
 
   experience-multiplier: 1.0
   block-break-speed: 1.0

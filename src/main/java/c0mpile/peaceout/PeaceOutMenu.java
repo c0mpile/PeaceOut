@@ -57,7 +57,8 @@ public final class PeaceOutMenu implements Listener {
       "fire",
       "trash",
       "backpack",
-      "backpack-pickup");
+      "backpack-pickup",
+      "backpack-sticky");
 
   private static final List<Double> MULTIPLIERS = List.of(
       0.25,
@@ -360,6 +361,7 @@ public final class PeaceOutMenu implements Listener {
         null,
         54,
         BACKPACK_TITLE_PREFIX + number);
+    inventory.setMaxStackSize(PeaceOut.MAX_STACK_SIZE);
 
     List<ItemStack> contents = getBackpackContents(
         player.getUniqueId(),
@@ -402,6 +404,7 @@ public final class PeaceOutMenu implements Listener {
         Object value = stored.get(slot);
 
         if (value instanceof ItemStack item) {
+          PeaceOut.applyMaxStackSize(item);
           contents.set(slot, item);
         }
       }
@@ -419,10 +422,13 @@ public final class PeaceOutMenu implements Listener {
     List<ItemStack> safe = new ArrayList<>();
 
     for (int slot = 0; slot < 54; slot++) {
-      safe.add(
-          slot < contents.size()
-              ? contents.get(slot)
-              : null);
+      ItemStack item = slot < contents.size()
+          ? contents.get(slot)
+          : null;
+      if (item != null) {
+        PeaceOut.applyMaxStackSize(item);
+      }
+      safe.add(item);
     }
 
     safe.set(BACKPACK_FOOTER_SLOT, null);
@@ -749,7 +755,8 @@ public final class PeaceOutMenu implements Listener {
     }
 
     if (key.equals("backpack")
-        || key.equals("backpack-pickup")) {
+        || key.equals("backpack-pickup")
+        || key.equals("backpack-sticky")) {
       return player.hasPermission("peaceout.backpack")
           && getBackpackCount(player) > 0;
     }
@@ -823,6 +830,7 @@ public final class PeaceOutMenu implements Listener {
       case "trash" -> Material.CAULDRON;
       case "backpack" -> Material.ENDER_CHEST;
       case "backpack-pickup" -> Material.CHEST_MINECART;
+      case "backpack-sticky" -> Material.HOPPER;
       default -> Material.BOOK;
     };
   }
@@ -857,6 +865,8 @@ public final class PeaceOutMenu implements Listener {
         "Unlocks your personal backpacks.";
       case "backpack-pickup" ->
         "Stores overflow items in your backpacks.";
+      case "backpack-sticky" ->
+        "Routes items to backpacks already holding them.";
       case "experience-multiplier" ->
         "Changes experience gained from orbs.";
       case "block-break-speed" ->
@@ -949,6 +959,8 @@ public final class PeaceOutMenu implements Listener {
         "Backpacks";
       case "backpack-pickup" ->
         "Automatic Backpack Pickup";
+      case "backpack-sticky" ->
+        "Smart Backpack Sorting";
       default ->
         key;
     };

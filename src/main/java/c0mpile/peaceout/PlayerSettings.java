@@ -67,7 +67,8 @@ public final class PlayerSettings {
                 "drop-vacuum",
                 "trash",
                 "backpack",
-                "backpack-pickup"
+                "backpack-pickup",
+                "backpack-sticky"
         };
 
         for (String key : booleanSettings) {

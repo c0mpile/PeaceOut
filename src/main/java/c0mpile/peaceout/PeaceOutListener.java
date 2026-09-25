@@ -19,6 +19,10 @@ import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.event.player.PlayerExpChangeEvent;
 import org.bukkit.event.player.PlayerItemDamageEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -28,7 +32,6 @@ import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 
 public final class PeaceOutListener implements Listener {
@@ -59,18 +62,70 @@ public final class PeaceOutListener implements Listener {
     vacuumTask.cancel();
   }
 
+  // =========================================================================
+  // Player join / quit
+  // =========================================================================
+
   @EventHandler
   public void onPlayerJoin(PlayerJoinEvent event) {
     Player player = event.getPlayer();
 
     plugin.getSettings(player).initialize(player);
     applyBlockSpeedModifier(player);
+
+    for (ItemStack item : player.getInventory().getContents()) {
+      PeaceOut.applyMaxStackSize(item);
+    }
+    for (ItemStack item : player.getEnderChest().getContents()) {
+      PeaceOut.applyMaxStackSize(item);
+    }
   }
 
   @EventHandler
   public void onPlayerQuit(PlayerQuitEvent event) {
     removeBlockSpeedModifier(event.getPlayer());
   }
+
+  // =========================================================================
+  // Inventory stack size handling
+  // =========================================================================
+
+  @EventHandler(priority = EventPriority.LOWEST)
+  public void onInventoryOpen(InventoryOpenEvent event) {
+    for (ItemStack item : event.getInventory().getContents()) {
+      PeaceOut.applyMaxStackSize(item);
+    }
+    for (ItemStack item : event.getPlayer().getInventory().getContents()) {
+      PeaceOut.applyMaxStackSize(item);
+    }
+  }
+
+  @EventHandler(priority = EventPriority.LOWEST)
+  public void onInventoryClick(InventoryClickEvent event) {
+    PeaceOut.applyMaxStackSize(event.getCurrentItem());
+    PeaceOut.applyMaxStackSize(event.getCursor());
+  }
+
+  @EventHandler(priority = EventPriority.LOWEST)
+  public void onInventoryDrag(InventoryDragEvent event) {
+    PeaceOut.applyMaxStackSize(event.getOldCursor());
+    PeaceOut.applyMaxStackSize(event.getCursor());
+    for (ItemStack item : event.getNewItems().values()) {
+      PeaceOut.applyMaxStackSize(item);
+    }
+  }
+
+  @EventHandler(priority = EventPriority.LOWEST)
+  public void onPrepareCraft(PrepareItemCraftEvent event) {
+    ItemStack result = event.getInventory().getResult();
+    if (result != null) {
+      PeaceOut.applyMaxStackSize(result);
+    }
+  }
+
+  // =========================================================================
+  // Protection events
+  // =========================================================================
 
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
   public void onEntityTarget(
@@ -177,16 +232,37 @@ public final class PeaceOutListener implements Listener {
     }
   }
 
+  // =========================================================================
+  // Block drops – max stack size and vacuum
+  // =========================================================================
+
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
   public void onBlockDropItem(BlockDropItemEvent event) {
+    for (Item item : event.getItems()) {
+      if (item.isValid()) {
+        PeaceOut.applyMaxStackSize(item.getItemStack());
+      }
+    }
+
     Player player = event.getPlayer();
 
     if (!ordinaryFeatureEnabled(player, "drop-vacuum")) {
       return;
     }
 
+    boolean backpackPickup = backpackPickupEnabled(player);
+
     for (Item item : new ArrayList<>(event.getItems())) {
       if (!item.isValid()) {
+        continue;
+      }
+
+      if (backpackPickup) {
+        if (routeItemToInventoryAndBackpack(player, item)) {
+          if (!item.isValid() || item.isDead()) {
+            event.getItems().remove(item);
+          }
+        }
         continue;
       }
 
@@ -212,8 +288,17 @@ public final class PeaceOutListener implements Listener {
     }
   }
 
+  // =========================================================================
+  // Pickup event – max stack size and backpack routing
+  // =========================================================================
+
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
   public void onEntityPickupItem(EntityPickupItemEvent event) {
+    Item item = event.getItem();
+    if (item.isValid() && !item.isDead()) {
+      PeaceOut.applyMaxStackSize(item.getItemStack());
+    }
+
     if (!(event.getEntity() instanceof Player player)) {
       return;
     }
@@ -221,8 +306,6 @@ public final class PeaceOutListener implements Listener {
     if (!backpackPickupEnabled(player)) {
       return;
     }
-
-    Item item = event.getItem();
 
     if (!item.isValid() || item.isDead()) {
       return;
@@ -236,6 +319,10 @@ public final class PeaceOutListener implements Listener {
       event.setCancelled(true);
     }
   }
+
+  // =========================================================================
+  // Vacuum scan task
+  // =========================================================================
 
   private void scanVacuumTargets() {
     for (Player player : Bukkit.getOnlinePlayers()) {
@@ -278,6 +365,8 @@ public final class PeaceOutListener implements Listener {
           item.getLocation()) > DROP_VACUUM_RADIUS_SQUARED) {
         continue;
       }
+
+      PeaceOut.applyMaxStackSize(item.getItemStack());
 
       if (backpackPickup) {
         routeItemToInventoryAndBackpack(
@@ -369,6 +458,10 @@ public final class PeaceOutListener implements Listener {
     orb.remove();
   }
 
+  // =========================================================================
+  // Item routing – inventory + backpacks
+  // =========================================================================
+
   private boolean routeItemToInventoryAndBackpack(
       Player player,
       Item item) {
@@ -377,6 +470,63 @@ public final class PeaceOutListener implements Listener {
     }
 
     ItemStack original = item.getItemStack().clone();
+    int originalAmount = original.getAmount();
+    int backpackCount = getBackpackCount(player);
+
+    int matchedBackpack = -1;
+    if (backpackStickyEnabled(player)) {
+      matchedBackpack = findMatchingBackpack(
+          player,
+          original,
+          backpackCount);
+    }
+
+    if (matchedBackpack != -1) {
+      ItemStack remaining = addToBackpack(
+          player,
+          matchedBackpack,
+          original);
+
+      if (remaining == null || remaining.getAmount() <= 0) {
+        item.remove();
+        return true;
+      }
+
+      InsertResult backpackResult = addToBackpacks(
+          player,
+          remaining,
+          backpackCount,
+          matchedBackpack);
+
+      if (backpackResult.remaining() <= 0) {
+        item.remove();
+        return true;
+      }
+
+      ItemStack invRemainder = remaining.clone();
+      invRemainder.setAmount(backpackResult.remaining());
+
+      InsertResult inventoryResult = addToInventory(
+          player.getInventory(),
+          invRemainder);
+
+      int totalRemaining = inventoryResult.remaining();
+      int totalAdded = originalAmount - totalRemaining;
+
+      if (totalAdded <= 0) {
+        return false;
+      }
+
+      if (totalRemaining <= 0) {
+        item.remove();
+        return true;
+      }
+
+      ItemStack finalRemainder = original.clone();
+      finalRemainder.setAmount(totalRemaining);
+      item.setItemStack(finalRemainder);
+      return true;
+    }
 
     InsertResult inventoryResult = addToInventory(
         player.getInventory(),
@@ -393,7 +543,7 @@ public final class PeaceOutListener implements Listener {
     InsertResult backpackResult = addToBackpacks(
         player,
         remainder,
-        getBackpackCount(player));
+        backpackCount);
 
     if (backpackResult.added() <= 0) {
       if (inventoryResult.added() > 0) {
@@ -417,31 +567,84 @@ public final class PeaceOutListener implements Listener {
     return true;
   }
 
+  // =========================================================================
+  // addToInventory – respects up to 99 stack size
+  // =========================================================================
+
   private InsertResult addToInventory(
       PlayerInventory inventory,
       ItemStack stack) {
     int originalAmount = stack.getAmount();
+    int remaining = originalAmount;
 
-    HashMap<Integer, ItemStack> leftovers = inventory.addItem(stack.clone());
+    int cap = effectiveCap(stack);
 
-    int remainingAmount = leftovers.values()
-        .stream()
-        .mapToInt(ItemStack::getAmount)
-        .sum();
+    // Pass 1 – merge into existing partial stacks (slots 0-35).
+    for (int slot = 0; slot <= 35 && remaining > 0; slot++) {
+      ItemStack existing = inventory.getItem(slot);
 
-    return new InsertResult(
-        originalAmount - remainingAmount,
-        remainingAmount);
+      if (existing == null
+          || existing.getType().isAir()
+          || !existing.isSimilar(stack)) {
+        continue;
+      }
+
+      PeaceOut.applyMaxStackSize(existing);
+
+      int free = cap - existing.getAmount();
+
+      if (free <= 0) {
+        continue;
+      }
+
+      int moved = Math.min(free, remaining);
+      existing.setAmount(existing.getAmount() + moved);
+      remaining -= moved;
+    }
+
+    // Pass 2 – fill empty slots (slots 0-35).
+    for (int slot = 0; slot <= 35 && remaining > 0; slot++) {
+      ItemStack existing = inventory.getItem(slot);
+
+      if (existing != null && !existing.getType().isAir()) {
+        continue;
+      }
+
+      int moved = Math.min(remaining, cap);
+      ItemStack placed = stack.clone();
+      placed.setAmount(moved);
+      PeaceOut.applyMaxStackSize(placed);
+      inventory.setItem(slot, placed);
+      remaining -= moved;
+    }
+
+    return new InsertResult(originalAmount - remaining, remaining);
   }
+
+  // =========================================================================
+  // addToBackpacks – respects up to 99 stack size and skips slot 49
+  // =========================================================================
 
   private InsertResult addToBackpacks(
       Player player,
       ItemStack stack,
       int count) {
+    return addToBackpacks(player, stack, count, -1);
+  }
+
+  private InsertResult addToBackpacks(
+      Player player,
+      ItemStack stack,
+      int count,
+      int skipBackpack) {
     int originalAmount = stack.getAmount();
     ItemStack remaining = stack.clone();
 
     for (int number = 1; number <= Math.min(count, MAX_BACKPACKS); number++) {
+      if (number == skipBackpack) {
+        continue;
+      }
+
       ItemStack next = addToBackpack(
           player,
           number,
@@ -461,6 +664,34 @@ public final class PeaceOutListener implements Listener {
         remaining.getAmount());
   }
 
+  private int findMatchingBackpack(
+      Player player,
+      ItemStack stack,
+      int count) {
+    int max = Math.min(count, MAX_BACKPACKS);
+    for (int number = 1; number <= max; number++) {
+      List<ItemStack> contents = plugin.getMenu().getBackpackContents(
+          player.getUniqueId(),
+          number);
+
+      for (int slot = 0; slot < contents.size(); slot++) {
+        if (slot == 49) {
+          continue;
+        }
+
+        ItemStack stored = contents.get(slot);
+
+        if (stored != null
+            && !stored.getType().isAir()
+            && stored.isSimilar(stack)) {
+          return number;
+        }
+      }
+    }
+
+    return -1;
+  }
+
   private ItemStack addToBackpack(
       Player player,
       int number,
@@ -471,6 +702,8 @@ public final class PeaceOutListener implements Listener {
 
     ItemStack remaining = incoming.clone();
     boolean changed = false;
+
+    int cap = effectiveCap(remaining);
 
     for (int slot = 0; slot < contents.size(); slot++) {
       if (slot == 49) {
@@ -485,11 +718,9 @@ public final class PeaceOutListener implements Listener {
         continue;
       }
 
-      int max = Math.min(
-          stored.getMaxStackSize(),
-          remaining.getMaxStackSize());
+      PeaceOut.applyMaxStackSize(stored);
 
-      int free = max - stored.getAmount();
+      int free = cap - stored.getAmount();
 
       if (free <= 0) {
         continue;
@@ -527,10 +758,11 @@ public final class PeaceOutListener implements Listener {
 
       int moved = Math.min(
           remaining.getAmount(),
-          remaining.getMaxStackSize());
+          cap);
 
       ItemStack placed = remaining.clone();
       placed.setAmount(moved);
+      PeaceOut.applyMaxStackSize(placed);
       contents.set(slot, placed);
 
       remaining.setAmount(
@@ -551,6 +783,14 @@ public final class PeaceOutListener implements Listener {
         : remaining;
   }
 
+  private static int effectiveCap(ItemStack stack) {
+    return stack.getType().getMaxStackSize() <= 1 ? 1 : PeaceOut.MAX_STACK_SIZE;
+  }
+
+  // =========================================================================
+  // Permission / feature checks
+  // =========================================================================
+
   private boolean backpackPickupEnabled(Player player) {
     if (!player.hasPermission("peaceout.use")
         || !player.hasPermission("peaceout.backpack")
@@ -562,6 +802,14 @@ public final class PeaceOutListener implements Listener {
 
     return settings.isEnabled("backpack")
         && settings.isEnabled("backpack-pickup");
+  }
+
+  private boolean backpackStickyEnabled(Player player) {
+    if (!backpackPickupEnabled(player)) {
+      return false;
+    }
+
+    return plugin.getSettings(player).isEnabled("backpack-sticky");
   }
 
   private boolean ordinaryFeatureEnabled(
@@ -587,6 +835,10 @@ public final class PeaceOutListener implements Listener {
 
     return 0;
   }
+
+  // =========================================================================
+  // Block-break speed modifier
+  // =========================================================================
 
   public void applyBlockSpeedModifier(Player player) {
     AttributeInstance attribute = player.getAttribute(Attribute.BLOCK_BREAK_SPEED);
@@ -619,6 +871,10 @@ public final class PeaceOutListener implements Listener {
           BLOCK_SPEED_MODIFIER_KEY);
     }
   }
+
+  // =========================================================================
+  // Internal value type
+  // =========================================================================
 
   private record InsertResult(
       int added,
